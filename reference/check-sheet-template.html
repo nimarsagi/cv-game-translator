@@ -152,7 +152,7 @@
 
   // A sentence ends at . ! or ? (and any closing quote or bracket) when spaces
   // follow and the next character is not a lowercase letter.
-  var SENTENCE_END = /[.!?]+["'”’)\]]*(?=\s+[^\s\p{Ll}])/gu;
+  var SENTENCE_END = /[.!?]+["'”’)\]*_]*(?=\s+[^\s\p{Ll}])/gu;
   var HAS_WORD = /[\p{L}\p{N}]/u;
 
   function isAbbreviation(text, dotIndex) {
@@ -171,7 +171,7 @@
     var m;
     SENTENCE_END.lastIndex = 0;
     while ((m = SENTENCE_END.exec(physicalLine)) !== null) {
-      var bare = m[0].replace(/["'”’)\]]+$/, '');
+      var bare = m[0].replace(/["'”’)\]*_]+$/, '');
       if (bare === '.' && isAbbreviation(physicalLine, m.index)) continue;
       var end = m.index + m[0].length;
       parts.push(physicalLine.slice(start, end));
