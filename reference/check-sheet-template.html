@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CV check sheet</title>
+<!-- check-sheet-template.html: the fixed-shape output. Every run fills only the data blocks
+     (id="cv-data", id="cv-sheet"). The checker code blocks are copied in from cv-number.js and
+     cv-check.js by `node cv-fill.js --refresh-template`; never edit them here by hand. -->
+<style>
+  :root {
+    --bg: #f5f3ee; --ink: #1c2130; --muted: #5d6474; --card: #ffffff; --line: #dcd6ca;
+    --accent: #2f6f73; --accent-ink: #ffffff; --soft: #eef4f3;
+    --ok: #1f7a3a; --ok-bg: #e5f4e9; --bad: #b3261e; --bad-bg: #fbe9e7; --wait: #8a8f99;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161b; --ink: #ebe7df; --muted: #a6abb8; --card: #1d2129; --line: #353b47;
+      --accent: #63b5ba; --accent-ink: #0c1013; --soft: #1a2a2b;
+      --ok: #6fd08c; --ok-bg: #173022; --bad: #ff8a80; --bad-bg: #3a1c1a; --wait: #7d828d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .page { max-width: 900px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: .95rem; margin: 18px 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 4px; }
+  .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: .85em; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 16px 0 0; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .stat b { display: block; font-size: 1.3rem; }
+  .stat span { color: var(--muted); font-size: .85rem; }
+  .field { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 8px 0; }
+  .field-name { font-weight: 700; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  .empty { color: var(--muted); font-style: italic; }
+  .item { display: grid; grid-template-columns: 1.4rem 3.2rem 1fr; gap: 4px 8px; align-items: baseline; padding: 4px 0; }
+  .item + .item { border-top: 1px dashed var(--line); }
+  .mark { font-weight: 700; color: var(--wait); text-align: center; }
+  .item.ok .mark { color: var(--ok); }
+  .item.bad .mark { color: var(--bad); }
+  .item.bad { background: var(--bad-bg); }
+  .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8rem; color: var(--accent); }
+  .full-line { grid-column: 3; color: var(--muted); font-size: .85rem; }
+  .why { grid-column: 3; color: var(--bad); font-size: .85rem; }
+  .cut-start::before, .cut-end::after { content: "\2026"; color: var(--muted); }
+  .level { border-left: 4px solid var(--accent); padding-left: 12px; margin: 12px 0; }
+  .level-label { font-size: .8rem; font-weight: 700; color: var(--muted); margin: 8px 0 2px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: .8rem; color: var(--muted); font-weight: 700; }
+  td.n { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8rem; color: var(--accent); white-space: nowrap; }
+  td.use { width: 34%; font-size: .85rem; }
+  td.use.none { color: var(--muted); font-style: italic; }
+  td.t { overflow-wrap: anywhere; }
+  .check { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .inputs { grid-template-columns: 1fr; } td.use { width: auto; } }
+  label { font-weight: 700; font-size: .85rem; display: block; margin: 0 0 4px; }
+  textarea { width: 100%; min-height: 9rem; font: .85rem/1.4 ui-monospace, Menlo, Consolas, monospace; padding: 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); resize: vertical; }
+  .file-row { display: flex; gap: 8px; align-items: center; margin-top: 4px; font-size: .8rem; color: var(--muted); }
+  input[type=file] { font-size: .8rem; max-width: 100%; }
+  button { font: inherit; cursor: pointer; border-radius: 6px; padding: 8px 16px; border: 2px solid var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+  button:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .verdict { margin: 12px 0 0; padding: 10px 12px; border-radius: 6px; font-weight: 700; }
+  .verdict.ok { background: var(--ok-bg); color: var(--ok); }
+  .verdict.bad { background: var(--bad-bg); color: var(--bad); }
+  .verdict:empty { display: none; }
+  ul.notes { margin: 8px 0 0; padding-left: 1.2em; }
+  ul.notes li { margin: 2px 0; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 6px 0 12px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <h1>CV check sheet</h1>
+  <p class="sub">For you and the judges. <b>Not for sending:</b> it lists what was left out of the game.</p>
+  <p class="sub mono" id="files"></p>
+  <div class="summary" id="summary"></div>
+
+  <h2>1. The CV, field by field</h2>
+  <p class="hint">The same seven fields, in the same order, every run. A field with nothing in the source says so; the game hides it.</p>
+  <div id="fields"></div>
+
+  <h2>2. Requirements left out: no evidence found</h2>
+  <p class="hint">Requirements from the job post with no matching line in the life document. They get no door in the game.</p>
+  <div id="left-out"></div>
+
+  <h2>3. Every life-document line</h2>
+  <div id="life-table"></div>
+
+  <h2>4. Every job-post line</h2>
+  <div id="job-table"></div>
+
+  <h2>5. Check it yourself</h2>
+  <div class="check">
+    <p class="hint" style="margin-top:0">Paste the two original documents, or load them as files, then run the check. Every piece above turns green when it is found, character for character, in the line it cites, and red when it is not. To check a game file instead of this sheet's copy, load it too.</p>
+    <div class="inputs">
+      <div>
+        <label for="in-life">Life document</label>
+        <textarea id="in-life" spellcheck="false"></textarea>
+        <div class="file-row"><input type="file" id="file-life" accept=".txt,.md,.markdown,text/plain"></div>
+      </div>
+      <div>
+        <label for="in-job">Job post</label>
+        <textarea id="in-job" spellcheck="false"></textarea>
+        <div class="file-row"><input type="file" id="file-job" accept=".txt,.md,.markdown,text/plain"></div>
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label for="file-game">Game file (optional)</label>
+      <div class="file-row"><input type="file" id="file-game" accept=".html,text/html"><span id="game-name"></span></div>
+    </div>
+    <p style="margin:14px 0 0"><button type="button" id="run">Run the check</button></p>
+    <div class="verdict" id="verdict" role="status"></div>
+    <ul class="notes" id="notes"></ul>
+  </div>
+</main>
+
+<script type="application/json" id="cv-data">{}</script>
+<script type="application/json" id="cv-sheet">{}</script>
+<script type="application/json" id="cv-template-fingerprint">"1c62c26b"</script>
+<script id="cv-number-code">
+/* cv-number.js — step 1, Number.
+ *
+ * Splits a document into numbered lines without changing a character.
+ * A new line starts at every line break in the document and at the end of
+ * every sentence. Lines with no letter or digit (like "---") are skipped.
+ *
+ *   node cv-number.js <run-folder>
+ *     reads   life-document.txt|.md and job-post.txt|.md in the run folder
+ *     writes  life-lines.txt (L1, L2 …) and job-lines.txt (J1, J2 …) next to them
+ *
+ * The same code runs in three places: here, inside cv-check.js, and inside
+ * check-sheet.html (the paste-in check). Change it here, then run
+ * `node cv-fill.js --refresh-template` so the check sheet carries the new copy.
+ */
+(function (root, factory) {
+  var api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.CVNumber = api;
+})(this, function () {
+  'use strict';
+
+  // Words that end in a period without ending a sentence (compared lowercase).
+  var ABBREVIATIONS = ['e.g', 'i.e', 'etc', 'vs', 'cf', 'ca', 'approx', 'incl', 'dr', 'mr', 'mrs', 'ms',
+    'prof', 'sr', 'jr', 'st', 'nr', 'inc', 'ltd', 'co', 'corp', 'dept', 'univ', 'fig', 'jan', 'feb',
+    'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'];
+
+  // A sentence ends at . ! or ? (and any closing quote or bracket) when spaces
+  // follow and the next character is not a lowercase letter.
+  var SENTENCE_END = /[.!?]+["'”’)\]]*(?=\s+[^\s\p{Ll}])/gu;
+  var HAS_WORD = /[\p{L}\p{N}]/u;
+
+  function isAbbreviation(text, dotIndex) {
+    var start = dotIndex;
+    while (start > 0 && !/\s/.test(text[start - 1])) start--;
+    var token = text.slice(start, dotIndex).replace(/^[("'“‘\[]+/, '');
+    if (!token) return false;
+    if (token.length === 1 && /\p{L}/u.test(token)) return true;   // an initial: "J. Smith"
+    if (token.indexOf('.') !== -1) return true;                     // "Ph.D", "U.S", "B.Sc"
+    return ABBREVIATIONS.indexOf(token.toLowerCase()) !== -1;
+  }
+
+  function splitSentences(physicalLine) {
+    var parts = [];
+    var start = 0;
+    var m;
+    SENTENCE_END.lastIndex = 0;
+    while ((m = SENTENCE_END.exec(physicalLine)) !== null) {
+      var bare = m[0].replace(/["'”’)\]]+$/, '');
+      if (bare === '.' && isAbbreviation(physicalLine, m.index)) continue;
+      var end = m.index + m[0].length;
+      parts.push(physicalLine.slice(start, end));
+      start = end;
+    }
+    parts.push(physicalLine.slice(start));
+    return parts.map(function (p) { return p.trim(); }).filter(function (p) { return HAS_WORD.test(p); });
+  }
+
+  // The document as an array of line texts. Line 1 is index 0.
+  function splitIntoLines(text) {
+    var out = [];
+    String(text).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n').forEach(function (physical) {
+      splitSentences(physical).forEach(function (s) { out.push(s); });
+    });
+    return out;
+  }
+
+  // Proof that splitting changed no character: every line is found, in order,
+  // and what lies between lines holds no letter or digit.
+  function verifyLines(text, lines) {
+    var src = String(text).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    var at = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var found = src.indexOf(lines[i], at);
+      if (found === -1) return 'line ' + (i + 1) + ' is not in the document as written';
+      if (HAS_WORD.test(src.slice(at, found))) return 'text before line ' + (i + 1) + ' was skipped';
+      at = found + lines[i].length;
+    }
+    if (HAS_WORD.test(src.slice(at))) return 'text after the last line was skipped';
+    return null;
+  }
+
+  return { splitIntoLines: splitIntoLines, verifyLines: verifyLines };
+});
+
+// ---- command line (Node only) ----
+if (typeof require === 'function' && typeof module === 'object' && require.main === module) {
+  (function main() {
+    var fs = require('fs');
+    var path = require('path');
+    var N = module.exports;
+    var dir = process.argv[2];
+    if (!dir) {
+      console.error('Usage: node cv-number.js <run-folder>');
+      process.exit(2);
+    }
+    function findInput(base) {
+      var names = [base + '.txt', base + '.md', base + '.markdown'];
+      for (var i = 0; i < names.length; i++) {
+        if (fs.existsSync(path.join(dir, names[i]))) return names[i];
+      }
+      console.error('Missing input: put ' + base + '.txt or ' + base + '.md in ' + dir);
+      process.exit(1);
+    }
+    var jobs = [['life-document', 'L', 'life-lines.txt'], ['job-post', 'J', 'job-lines.txt']];
+    var report = [];
+    jobs.forEach(function (j) {
+      var file = findInput(j[0]);
+      var text = fs.readFileSync(path.join(dir, file), 'utf8');
+      var lines = N.splitIntoLines(text);
+      var problem = N.verifyLines(text, lines);
+      if (problem) {
+        console.error('Number failed on ' + file + ': ' + problem);
+        process.exit(1);
+      }
+      var body = '# ' + j[2] + ' - made by cv-number.js from ' + file + '. Do not edit: change ' + file +
+        ' and run Number again.\n' +
+        lines.map(function (l, i) { return j[1] + (i + 1) + '\t' + l; }).join('\n') + '\n';
+      fs.writeFileSync(path.join(dir, j[2]), body);
+      report.push(file + ' -> ' + j[2] + ' (' + j[1] + '1-' + j[1] + lines.length + ')');
+    });
+    console.log('Numbered, no character changed:\n  ' + report.join('\n  '));
+  })();
+}
+</script>
+<script id="cv-check-code">
+/* cv-check.js — step 4, Check. Also the shared rules for what counts as a faithful piece.
+ *
+ * Confirms that every piece of text in the game appears inside the line it
+ * cites, character for character, ignoring only spacing (and ** bold marks and
+ * a leading bullet mark, which are formatting, not words). One miss fails the run.
+ *
+ *   node cv-check.js <run-folder>
+ *     reads   game.html, check-sheet.html, life-document.*, job-post.* in the run folder,
+ *             and game-template.html, check-sheet-template.html
+ *     writes  check-result.txt; exit code 0 = pass, 1 = fail
+ *
+ * The same file is copied into check-sheet.html, where a reader pastes the two
+ * original documents and sees each item turn green or red. cv-fill.js uses it
+ * too, so a bad piece is caught before anything is written.
+ * After changing this file run `node cv-fill.js --refresh-template`.
+ */
+(function (root, factory) {
+  var api = factory(function () {
+    if (typeof require === 'function' && typeof module === 'object') return require('./cv-number.js');
+    return root.CVNumber;
+  });
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.CVCheck = api;
+})(this, function (loadNumber) {
+  'use strict';
+
+  var DATA_FORMAT = 'cv-game-data/1';
+  var SHEET_FORMAT = 'cv-sheet-data/1';
+  var MAX_EVIDENCE = 3;
+
+  // The fixed fields, in the fixed order. source: L = life document, J = job post.
+  var FIELDS = [
+    { key: 'name', label: 'Name', source: 'L', max: 1 },
+    { key: 'contact', label: 'Contact', source: 'L', max: 4 },
+    { key: 'jobTitle', label: 'Job title', source: 'J', max: 1 },
+    { key: 'company', label: 'Company', source: 'J', max: 1 },
+    { key: 'levels', label: 'Levels', source: null, max: null },
+    { key: 'roles', label: 'Roles', source: 'L', max: 8 },
+    { key: 'traits', label: 'Traits', source: 'L', max: 5 }
+  ];
+
+  var WORD = /[\p{L}\p{N}]/u;
+  // A cut may not drop any of these words: each can flip what the rest says.
+  var FLIP = /(?:^|[^\p{L}\p{N}])(not|no|never|none|nor|cannot|without|help|helped|helping|assist|assisted|assisting|supported|supporting|contribute|contributed|contributing|partly|partially|tried|attempted|almost|nearly|hardly|barely)(?=$|[^\p{L}\p{N}])|\p{L}(n['’]t)(?=$|[^\p{L}\p{N}])/iu;
+
+  function stripMarker(s) {
+    return String(s).replace(/^\s*(?:[-*+•·–—]|\d{1,2}[.)]|#{1,6})\s+/u, '');
+  }
+  // Formatting that is not words: spacing, ** or __ bold marks, a leading bullet mark.
+  function clean(s) {
+    return stripMarker(s).normalize('NFC').replace(/\*\*|__/g, '').replace(/\s+/g, ' ').trim();
+  }
+  // Used only to find a piece Claude typed: ignores quote and dash style. The text is still copied from the line.
+  function loose(s) {
+    return s.replace(/[‘’‚‛′]/g, "'")
+      .replace(/[“”„‟″]/g, '"')
+      .replace(/[‐-―]/g, '-');
+  }
+  function isWordChar(ch) { return typeof ch === 'string' && ch !== '' && WORD.test(ch); }
+
+  function parseRef(ref) {
+    var m = /^([LJ])([1-9]\d*)$/.exec(String(ref || '').trim());
+    return m ? { source: m[1], n: Number(m[2]), ref: m[1] + m[2] } : null;
+  }
+
+  // Where a piece sits inside a line, starting and ending on word edges. strict = character for character.
+  function locate(lineText, piece, strict) {
+    var c = clean(lineText);
+    var p = clean(piece);
+    if (!p || !WORD.test(p)) return null;
+    var hay = strict ? c : loose(c);
+    var needle = strict ? p : loose(p);
+    var from = 0;
+    var i;
+    while ((i = hay.indexOf(needle, from)) !== -1) {
+      var j = i + needle.length;
+      var cleanStart = !(isWordChar(c[i - 1]) && isWordChar(c[i]));
+      var cleanEnd = !(isWordChar(c[j - 1]) && isWordChar(c[j]));
+      if (cleanStart && cleanEnd) {
+        var before = c.slice(0, i);
+        var after = c.slice(j);
+        return { text: c.slice(i, j), start: i, cutStart: WORD.test(before), cutEnd: WORD.test(after),
+          dropped: before + ' … ' + after, line: c };
+      }
+      from = i + 1;
+    }
+    return null;
+  }
+
+  function flipWord(dropped) {
+    var m = FLIP.exec(dropped);
+    return m ? (m[1] || m[2]) : null;
+  }
+
+  function docName(source) { return source === 'L' ? 'life document' : 'job post'; }
+
+  // Build one item from a line number and an optional piece. Used by cv-fill.js.
+  // Returns { item, order } or throws with a reason a person can act on.
+  function makeItem(docs, ref, piece, source) {
+    var r = parseRef(ref);
+    if (!r) throw new Error('"' + ref + '" is not a line number like L12 or J3');
+    if (source && r.source !== source) throw new Error(r.ref + ': this field takes a ' + docName(source) + ' line (' + source + '...)');
+    var line = docs[r.source][r.n - 1];
+    if (line === undefined) throw new Error(r.ref + ' does not exist: the ' + docName(r.source) + ' has ' + docs[r.source].length + ' lines');
+    var loc = locate(line, piece == null ? line : piece, false);
+    if (!loc) {
+      throw new Error(piece == null ? r.ref + ' has no words'
+        : r.ref + ': "' + piece + '" is not in this line word for word. The line reads: ' + clean(line));
+    }
+    var flip = flipWord(loc.dropped);
+    if (flip) throw new Error(r.ref + ': the cut drops "' + flip + '", which can flip the meaning. Use the whole line, or a piece that keeps "' + flip + '".');
+    return { item: { ref: r.ref, text: loc.text, cutStart: loc.cutStart, cutEnd: loc.cutEnd }, order: r.n * 100000 + loc.start };
+  }
+
+  // Check one item against the lines. Returns null when it holds, or the reason it fails.
+  function checkItem(docs, item, source) {
+    if (!item || typeof item !== 'object') return 'not an item';
+    var keys = Object.keys(item).sort().join(',');
+    if (keys !== 'cutEnd,cutStart,ref,text') return 'unexpected parts: ' + keys;
+    if (typeof item.text !== 'string') return 'no text';
+    var r = parseRef(item.ref);
+    if (!r) return '"' + item.ref + '" is not a line number';
+    if (source && r.source !== source) return 'cites ' + r.ref + ', but this field comes from the ' + docName(source);
+    var line = docs[r.source][r.n - 1];
+    if (line === undefined) return r.ref + ' is not in the ' + docName(r.source) + ' (it has ' + docs[r.source].length + ' lines)';
+    var loc = locate(line, item.text, true);
+    if (!loc) return 'not found in ' + r.ref + ' character for character';
+    if (loc.cutStart !== item.cutStart || loc.cutEnd !== item.cutEnd) return 'the … marks do not match where ' + r.ref + ' was cut';
+    var flip = flipWord(loc.dropped);
+    if (flip) return 'the cut drops "' + flip + '"';
+    return null;
+  }
+
+  // Every item in the game data, with where it sits, plus any problem with the shape itself.
+  function walk(fields) {
+    var items = [];
+    var problems = [];
+    fields = fields && typeof fields === 'object' ? fields : {};
+    function add(where, source, item) { items.push({ where: where, source: source, item: item }); }
+    FIELDS.forEach(function (f) {
+      var v = fields[f.key];
+      if (!Array.isArray(v)) { problems.push(f.label + ' is missing'); return; }
+      if (f.max && v.length > f.max) problems.push(f.label + ' holds ' + v.length + ' (at most ' + f.max + ')');
+      if (f.key === 'levels') {
+        v.forEach(function (lv, i) {
+          var w = 'Level ' + (i + 1);
+          if (!lv || typeof lv !== 'object' || Object.keys(lv).sort().join(',') !== 'asks,evidence') {
+            problems.push(w + ' is not shaped as { asks, evidence }');
+            return;
+          }
+          add(w + ', the job asks', 'J', lv.asks);
+          if (!Array.isArray(lv.evidence) || lv.evidence.length < 1 || lv.evidence.length > MAX_EVIDENCE) {
+            problems.push(w + ' must hold 1 to ' + MAX_EVIDENCE + ' pieces of evidence');
+          }
+          (Array.isArray(lv.evidence) ? lv.evidence : []).forEach(function (e, k) { add(w + ', evidence ' + (k + 1), 'L', e); });
+        });
+      } else if (f.key === 'roles') {
+        v.forEach(function (ro, i) {
+          var w = 'Role ' + (i + 1);
+          if (!ro || typeof ro !== 'object' || Object.keys(ro).sort().join(',') !== 'dates,role') {
+            problems.push(w + ' is not shaped as { role, dates }');
+            return;
+          }
+          add(w, 'L', ro.role);
+          if (!Array.isArray(ro.dates) || ro.dates.length > 1) problems.push(w + ': dates must be a list of 0 or 1 piece');
+          (Array.isArray(ro.dates) ? ro.dates : []).forEach(function (d) { add(w + ', dates', 'L', d); });
+        });
+      } else {
+        v.forEach(function (it, i) { add(f.max > 1 ? f.label + ' ' + (i + 1) : f.label, f.source, it); });
+      }
+    });
+    var extra = Object.keys(fields).filter(function (k) { return !FIELDS.some(function (f) { return f.key === k; }); });
+    if (extra.length) problems.push('fields that are not in the contract: ' + extra.join(', '));
+    return { items: items, problems: problems };
+  }
+
+  // The check: the game's data against the two original documents, as text.
+  function checkGame(data, lifeText, jobText) {
+    var N = loadNumber();
+    var docs = { L: N.splitIntoLines(lifeText), J: N.splitIntoLines(jobText) };
+    var problems = [];
+    if (!data || typeof data !== 'object' || data.format !== DATA_FORMAT) problems.push('the game data is not in format ' + DATA_FORMAT);
+    var keys = data && typeof data === 'object' ? Object.keys(data).sort().join(',') : '';
+    if (keys !== 'fields,format') problems.push('the game data holds more than the fixed fields (' + keys + ')');
+    var w = walk(data && data.fields);
+    problems = problems.concat(w.problems);
+    var results = w.items.map(function (x) {
+      var reason = checkItem(docs, x.item, x.source);
+      var it = x.item && typeof x.item === 'object' ? x.item : {};
+      return { where: x.where, ref: it.ref, text: it.text, cutStart: it.cutStart, cutEnd: it.cutEnd, ok: !reason, reason: reason };
+    });
+    var failed = results.filter(function (r) { return !r.ok; }).length;
+    return { ok: problems.length === 0 && failed === 0, problems: problems, results: results, failed: failed,
+      lineCounts: { L: docs.L.length, J: docs.J.length } };
+  }
+
+  // The check sheet's own data: its stored lines are the originals as numbered,
+  // and each requirement it lists as left out is a piece of the job-post line it cites.
+  function checkSheet(sheet, lifeText, jobText) {
+    var N = loadNumber();
+    var docs = { L: N.splitIntoLines(lifeText), J: N.splitIntoLines(jobText) };
+    var problems = [];
+    if (!sheet || typeof sheet !== 'object' || sheet.format !== SHEET_FORMAT) {
+      return { ok: false, problems: ['the check-sheet data is not in format ' + SHEET_FORMAT], results: [] };
+    }
+    function same(a, b) { return Array.isArray(a) && a.length === b.length && a.every(function (x, i) { return x === b[i]; }); }
+    if (!same(sheet.lifeLines, docs.L)) problems.push('the life-document lines stored in the check sheet differ from the life document');
+    if (!same(sheet.jobLines, docs.J)) problems.push('the job-post lines stored in the check sheet differ from the job post');
+    var results = (Array.isArray(sheet.leftOut) ? sheet.leftOut : []).map(function (lo, i) {
+      var it = lo && lo.asks && typeof lo.asks === 'object' ? lo.asks : {};
+      var reason = lo && typeof lo === 'object' && Object.keys(lo).join(',') === 'asks' ? checkItem(docs, lo.asks, 'J') : 'not shaped as { asks }';
+      return { where: 'Requirement left out ' + (i + 1), ref: it.ref, text: it.text, cutStart: it.cutStart, cutEnd: it.cutEnd, ok: !reason, reason: reason };
+    });
+    var failed = results.filter(function (r) { return !r.ok; }).length;
+    return { ok: problems.length === 0 && failed === 0, problems: problems, results: results, failed: failed };
+  }
+
+  // Every input line, with where it was used. Nothing drops out silently.
+  function accountLines(fields, leftOut, lifeLines, jobLines) {
+    var uses = { L: lifeLines.map(function () { return []; }), J: jobLines.map(function () { return []; }) };
+    function mark(item, what) {
+      var r = item && parseRef(item.ref);
+      if (r && uses[r.source][r.n - 1]) uses[r.source][r.n - 1].push(what);
+    }
+    walk(fields).items.forEach(function (x) { mark(x.item, x.where); });
+    (leftOut || []).forEach(function (lo) { mark(lo && lo.asks, 'requirement left out: no evidence found'); });
+    function list(lines, source) {
+      return lines.map(function (t, i) { return { ref: source + (i + 1), text: t, uses: uses[source][i] }; });
+    }
+    return { life: list(lifeLines, 'L'), job: list(jobLines, 'J') };
+  }
+
+  // Data blocks inside the HTML files: a script tag with an id, such as the one with id cv-data.
+  function blockPattern(id) {
+    return new RegExp('(<script\\b[^>]*\\bid="' + id + '"[^>]*>)([\\s\\S]*?)(<\\/script>)');
+  }
+  function readBlock(html, id) {
+    var m = blockPattern(id).exec(String(html));
+    return m ? m[2] : null;
+  }
+  function writeBlock(html, id, content) {
+    var re = blockPattern(id);
+    if (!re.test(html)) throw new Error('no block with id "' + id + '"');
+    return String(html).replace(re, function (all, open, old, close) { return open + content + close; });
+  }
+  function toBlockJSON(obj) {
+    return JSON.stringify(obj, null, 1).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  }
+  function readJSONBlock(html, id) {
+    var raw = readBlock(html, id);
+    if (raw === null) throw new Error('no block with id "' + id + '"');
+    return JSON.parse(raw);
+  }
+
+  // A short fingerprint of a game file with its data taken out: the same for every run from one template.
+  function templateFingerprint(html) {
+    var s = writeBlock(String(html).replace(/\r\n?/g, '\n'), 'cv-data', '').replace(/\s+$/, '');
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return ('0000000' + h.toString(16)).slice(-8);
+  }
+
+  return {
+    DATA_FORMAT: DATA_FORMAT, SHEET_FORMAT: SHEET_FORMAT, FIELDS: FIELDS, MAX_EVIDENCE: MAX_EVIDENCE,
+    clean: clean, parseRef: parseRef, locate: locate, makeItem: makeItem, checkItem: checkItem, walk: walk,
+    checkGame: checkGame, checkSheet: checkSheet, accountLines: accountLines, readBlock: readBlock, writeBlock: writeBlock,
+    toBlockJSON: toBlockJSON, readJSONBlock: readJSONBlock, templateFingerprint: templateFingerprint
+  };
+});
+
+// ---- command line (Node only) ----
+if (typeof require === 'function' && typeof module === 'object' && require.main === module) {
+  (function main() {
+    var fs = require('fs');
+    var path = require('path');
+    var C = module.exports;
+    var dir = process.argv[2];
+    if (!dir) {
+      console.error('Usage: node cv-check.js <run-folder>');
+      process.exit(2);
+    }
+    function inRun(name, required) {
+      var p = path.join(dir, name);
+      if (fs.existsSync(p)) return p;
+      if (required) { console.error('Missing ' + name + ' in ' + dir); process.exit(1); }
+      return null;
+    }
+    function input(base) {
+      return inRun(base + '.txt') || inRun(base + '.md') || inRun(base + '.markdown') || inRun(base + '.txt', true);
+    }
+    function factoryFile(name) {
+      var dirs = [__dirname, path.join(__dirname, '..', 'reference'), path.join(__dirname, '..'), process.cwd(), path.join(process.cwd(), 'reference')];
+      for (var i = 0; i < dirs.length; i++) {
+        var p = path.join(dirs[i], name);
+        if (fs.existsSync(p)) return p;
+      }
+      console.error('Cannot find ' + name + '. Put it next to cv-check.js or in a reference/ folder beside it.');
+      process.exit(1);
+    }
+    function read(p) { return fs.readFileSync(p, 'utf8'); }
+    function short(s) { s = String(s == null ? '' : s); return s.length > 70 ? s.slice(0, 67) + '...' : s; }
+
+    var lifePath = input('life-document');
+    var jobPath = input('job-post');
+    var gameHtml = read(inRun('game.html', true));
+    var sheetHtml = read(inRun('check-sheet.html', true));
+    var gameTemplate = read(factoryFile('game-template.html'));
+    var sheetTemplate = read(factoryFile('check-sheet-template.html'));
+    var numberSrc = read(path.join(__dirname, 'cv-number.js')).trim();
+    var checkSrc = read(__filename).trim();
+
+    var out = [];
+    var failures = 0;
+    function line(ok, text) { out.push((ok ? 'PASS  ' : 'FAIL  ') + text); if (!ok) failures++; }
+
+    out.push('Check of ' + path.join(dir, 'game.html') + ' against ' + path.basename(lifePath) + ' and ' + path.basename(jobPath));
+    out.push('');
+    var data;
+    try { data = C.readJSONBlock(gameHtml, 'cv-data'); } catch (e) { data = null; line(false, 'game.html: cannot read its data (' + e.message + ')'); }
+    var result = C.checkGame(data, read(lifePath), read(jobPath));
+    result.results.forEach(function (r) {
+      var shown = (r.cutStart ? '...' : '') + short(r.text) + (r.cutEnd ? '...' : '');
+      line(r.ok, r.where + ' [' + r.ref + '] "' + shown + '"' + (r.ok ? '' : '  <- ' + r.reason));
+    });
+    result.problems.forEach(function (p) { line(false, 'Shape: ' + p); });
+    var sheetInfo;
+    try { sheetInfo = C.readJSONBlock(sheetHtml, 'cv-sheet'); } catch (e) { sheetInfo = null; }
+    var sheetResult = C.checkSheet(sheetInfo, read(lifePath), read(jobPath));
+    sheetResult.results.forEach(function (r) {
+      var shown = (r.cutStart ? '...' : '') + short(r.text) + (r.cutEnd ? '...' : '');
+      line(r.ok, 'Check sheet, ' + r.where + ' [' + r.ref + '] "' + shown + '"' + (r.ok ? '' : '  <- ' + r.reason));
+    });
+    sheetResult.problems.forEach(function (p) { line(false, 'Check sheet: ' + p); });
+    out.push('');
+
+    // The game is the template with only its data block filled.
+    line(C.writeBlock(gameHtml, 'cv-data', '').trim() === C.writeBlock(gameTemplate, 'cv-data', '').trim(),
+      'game.html is game-template.html with only its data filled in');
+    // The check sheet shows the same data and runs the same checker.
+    var sheetData = C.readBlock(sheetHtml, 'cv-data');
+    line(sheetData !== null && sheetData.trim() === String(C.readBlock(gameHtml, 'cv-data')).trim(), 'check-sheet.html holds the same data as game.html');
+    line(String(C.readBlock(sheetHtml, 'cv-number-code')).trim() === numberSrc && String(C.readBlock(sheetHtml, 'cv-check-code')).trim() === checkSrc,
+      'check-sheet.html carries the same checker code as cv-number.js and cv-check.js');
+    line(String(C.readBlock(sheetTemplate, 'cv-number-code')).trim() === numberSrc && String(C.readBlock(sheetTemplate, 'cv-check-code')).trim() === checkSrc &&
+      String(C.readBlock(sheetTemplate, 'cv-template-fingerprint')).trim() === JSON.stringify(C.templateFingerprint(gameTemplate)),
+      'check-sheet-template.html is up to date with the scripts and game-template.html');
+
+    var items = result.results.length;
+    var sheetItems = sheetResult.results.length;
+    out.push('');
+    out.push(failures === 0
+      ? 'RESULT: PASS. All ' + items + ' pieces of text in the game (and ' + sheetItems + ' left-out requirements on the check sheet) were found in the lines they cite.'
+      : 'RESULT: FAIL. ' + failures + ' problem(s). Do not hand over the game: fix map.txt and run Fill again.');
+    var report = out.join('\n') + '\n';
+    fs.writeFileSync(path.join(dir, 'check-result.txt'), report);
+    process.stdout.write(report);
+    process.exit(failures === 0 ? 0 : 1);
+  })();
+}
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.CVCheck;
+  function json(id) { try { return JSON.parse(document.getElementById(id).textContent); } catch (e) { return null; } }
+  var data = json('cv-data');
+  var sheet = json('cv-sheet');
+  var fingerprint = json('cv-template-fingerprint');
+  var F = data && data.fields ? data.fields : null;
+  var lifeLines = sheet && Array.isArray(sheet.lifeLines) ? sheet.lifeLines : [];
+  var jobLines = sheet && Array.isArray(sheet.jobLines) ? sheet.jobLines : [];
+  var leftOut = sheet && Array.isArray(sheet.leftOut) ? sheet.leftOut : [];
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function add(parent) { for (var i = 1; i < arguments.length; i++) if (arguments[i]) parent.appendChild(arguments[i]); return parent; }
+  function lineOf(ref) {
+    var r = C.parseRef(ref);
+    if (!r) return null;
+    var list = r.source === 'L' ? lifeLines : jobLines;
+    return list[r.n - 1];
+  }
+
+  // One piece, keyed by where it sits, so the check can colour it.
+  var itemRows = {};
+  function itemRow(where, item) {
+    var row = el('div', 'item');
+    row.setAttribute('data-where', where);
+    var mark = el('span', 'mark', '·');
+    mark.title = 'not checked yet';
+    var text = el('span', null, item.text);
+    if (item.cutStart) text.classList.add('cut-start');
+    if (item.cutEnd) text.classList.add('cut-end');
+    add(row, mark, el('span', 'ref', item.ref), text);
+    if (item.cutStart || item.cutEnd) {
+      var full = lineOf(item.ref);
+      if (full != null) add(row, el('span', 'full-line', 'Full line: ' + C.clean(full)));
+    }
+    itemRows[where] = row;
+    return row;
+  }
+  function emptyNote() { return el('div', 'empty', 'not in source'); }
+
+  document.getElementById('files').textContent = sheet
+    ? 'From: ' + (sheet.lifeFile || 'life document') + ' + ' + (sheet.jobFile || 'job post')
+    : 'This file holds no run data yet.';
+
+  // ---------- 1. the fields, in the contract's order ----------
+  var fieldsBox = document.getElementById('fields');
+  (C.FIELDS || []).forEach(function (f) {
+    var box = add(el('section', 'field'), el('div', 'field-name', f.label));
+    var v = F && Array.isArray(F[f.key]) ? F[f.key] : [];
+    if (!v.length) { add(fieldsBox, add(box, emptyNote())); return; }
+    if (f.key === 'levels') {
+      v.forEach(function (lv, i) {
+        var w = 'Level ' + (i + 1);
+        var wrap = add(el('div', 'level'), el('h3', null, w),
+          el('div', 'level-label', 'The job asks:'), itemRow(w + ', the job asks', lv.asks),
+          el('div', 'level-label', 'From the life document:'));
+        lv.evidence.forEach(function (ev, k) { add(wrap, itemRow(w + ', evidence ' + (k + 1), ev)); });
+        add(box, wrap);
+      });
+    } else if (f.key === 'roles') {
+      v.forEach(function (ro, i) {
+        var w = 'Role ' + (i + 1);
+        add(box, itemRow(w, ro.role));
+        if (ro.dates.length) add(box, itemRow(w + ', dates', ro.dates[0]));
+        else add(box, add(el('div', 'item'), el('span'), el('span'), el('span', 'empty', 'dates: not in source')));
+      });
+    } else {
+      v.forEach(function (it, i) { add(box, itemRow(f.max > 1 ? f.label + ' ' + (i + 1) : f.label, it)); });
+    }
+    add(fieldsBox, box);
+  });
+
+  // ---------- 2. requirements left out ----------
+  var lo = document.getElementById('left-out');
+  var loBox = el('section', 'field');
+  if (!leftOut.length) add(loBox, el('div', 'empty', 'none'));
+  leftOut.forEach(function (x, i) { add(loBox, itemRow('Requirement left out ' + (i + 1), x.asks)); });
+  add(lo, loBox);
+
+  // ---------- 3 and 4. every input line ----------
+  var acc = C.accountLines(F || {}, leftOut, lifeLines, jobLines);
+  function table(rows, emptyUse) {
+    var t = el('table');
+    add(t, add(el('thead'), add(el('tr'), el('th', null, 'Line'), el('th', null, 'Text'), el('th', null, 'Used in'))));
+    var tb = el('tbody');
+    rows.forEach(function (r) {
+      add(tb, add(el('tr'), el('td', 'n', r.ref), el('td', 't', r.text),
+        el('td', r.uses.length ? 'use' : 'use none', r.uses.length ? r.uses.join('; ') : emptyUse)));
+    });
+    return add(t, tb);
+  }
+  add(document.getElementById('life-table'), lifeLines.length ? table(acc.life, 'left out') : emptyNote());
+  add(document.getElementById('job-table'), jobLines.length ? table(acc.job, 'not a requirement') : emptyNote());
+
+  // ---------- summary ----------
+  function stat(n, what) { return add(el('div', 'stat'), el('b', null, String(n)), el('span', null, what)); }
+  var levels = F && Array.isArray(F.levels) ? F.levels.length : 0;
+  var lifeUsed = acc.life.filter(function (r) { return r.uses.length; }).length;
+  var emptyFields = (C.FIELDS || []).filter(function (f) { return !(F && Array.isArray(F[f.key]) && F[f.key].length); }).length;
+  add(document.getElementById('summary'),
+    stat(levels, 'levels (doors) in the game'),
+    stat(leftOut.length, 'requirements left out'),
+    stat(lifeUsed + ' / ' + lifeLines.length, 'life-document lines used'),
+    stat(emptyFields, 'fields not in source'));
+
+  // ---------- 5. the paste-in check ----------
+  var gameHtml = null;
+  function loadInto(inputId, onText) {
+    document.getElementById(inputId).addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function () { onText(String(r.result), f.name); };
+      r.readAsText(f);
+    });
+  }
+  loadInto('file-life', function (t) { document.getElementById('in-life').value = t; });
+  loadInto('file-job', function (t) { document.getElementById('in-job').value = t; });
+  loadInto('file-game', function (t, name) { gameHtml = t; document.getElementById('game-name').textContent = 'loaded: ' + name; });
+
+  function setMark(row, ok, reason) {
+    row.classList.remove('ok', 'bad');
+    row.classList.add(ok ? 'ok' : 'bad');
+    var mark = row.querySelector('.mark');
+    mark.textContent = ok ? '✓' : '✗';
+    mark.title = ok ? 'found in the line it cites' : 'not found';
+    var old = row.querySelector('.why');
+    if (old) row.removeChild(old);
+    if (!ok) add(row, el('span', 'why', reason));
+  }
+
+  document.getElementById('run').addEventListener('click', function () {
+    var life = document.getElementById('in-life').value;
+    var job = document.getElementById('in-job').value;
+    var notes = document.getElementById('notes');
+    var verdict = document.getElementById('verdict');
+    notes.textContent = '';
+    if (!life.trim() || !job.trim()) {
+      verdict.className = 'verdict bad';
+      verdict.textContent = 'Paste or load both original documents first.';
+      return;
+    }
+    var checked = data;
+    var problems = [];
+    if (gameHtml !== null) {
+      try { checked = C.readJSONBlock(gameHtml, 'cv-data'); } catch (e) { checked = null; problems.push('The game file: cannot read its data (' + e.message + ').'); }
+      if (C.templateFingerprint(gameHtml) !== fingerprint) problems.push('The game file: its fixed part (code and labels) is not the game template.');
+      if (JSON.stringify(checked) !== JSON.stringify(data)) problems.push('The game file holds different data from this sheet. The pieces listed below are the game file’s.');
+    }
+    var res = C.checkGame(checked, life, job);
+    var sres = C.checkSheet(sheet, life, job);
+    var all = res.results.concat(sres.results);
+    problems = problems.concat(res.problems, sres.problems);
+    var sameData = gameHtml === null || JSON.stringify(checked) === JSON.stringify(data);
+    Object.keys(itemRows).forEach(function (k) {
+      var row = itemRows[k];
+      row.classList.remove('ok', 'bad');
+      row.querySelector('.mark').textContent = '·';
+    });
+    all.forEach(function (r) {
+      var row = itemRows[r.where];
+      if (row && (sameData || /^Requirement left out/.test(r.where))) setMark(row, r.ok, r.reason);
+      if (!r.ok) add(notes, el('li', null, r.where + ' [' + r.ref + '] "' + r.text + '": ' + r.reason));
+    });
+    problems.forEach(function (p) { add(notes, el('li', null, p)); });
+    var failed = all.filter(function (r) { return !r.ok; }).length + problems.length;
+    verdict.className = 'verdict ' + (failed ? 'bad' : 'ok');
+    verdict.textContent = failed
+      ? 'FAIL: ' + failed + ' problem(s). Do not send the game.'
+      : 'PASS: all ' + all.length + ' pieces were found, character for character, in the lines they cite.';
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CV game</title>
+<!-- game-template.html: the fixed game. Every run fills only the data block near the end (id="cv-data").
+     Nothing else in this file changes between runs; cv-check.js fails the run if it does. -->
+<style>
+  :root {
+    --bg: #f3f0e8; --ink: #1d2230; --muted: #5b6273; --card: #ffffff; --line: #d8d1c2;
+    --accent: #2f6f73; --accent-ink: #ffffff; --quote: #edf4f3; --frame: #1d1d2b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161b; --ink: #ebe7df; --muted: #a6abb8; --card: #1e222a; --line: #353b47;
+      --accent: #63b5ba; --accent-ink: #0c1013; --quote: #1a2a2b; --frame: #000000;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .app { max-width: 760px; margin: 0 auto; padding: 12px 16px 24px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .who { font-weight: 700; font-size: 1.05rem; overflow-wrap: anywhere; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; padding: 8px 14px;
+    border: 2px solid var(--frame); background: var(--card); color: var(--ink);
+  }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--frame); }
+  button:disabled { opacity: .4; cursor: default; }
+  .scene { border: 3px solid var(--frame); border-radius: 6px; overflow: hidden; line-height: 0; background: #a9dcf5; cursor: pointer; }
+  canvas { width: 100%; height: auto; aspect-ratio: 320 / 120; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  .panel {
+    margin-top: 12px; background: var(--card); border: 2px solid var(--line); border-radius: 8px;
+    padding: 16px 18px; min-height: 12rem; transition: opacity .15s;
+  }
+  .panel.walking { opacity: .35; }
+  .kicker { font: 700 .75rem/1.2 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .kicker + .kicker, * + .kicker { margin-top: 14px; }
+  .label { font-weight: 700; font-size: .9rem; color: var(--muted); margin: 10px 0 4px; }
+  .name { font-size: 1.6rem; line-height: 1.2; margin: 0 0 6px; overflow-wrap: anywhere; }
+  .asks { margin: 0; padding: 10px 12px; background: var(--quote); border-left: 4px solid var(--accent); border-radius: 4px; font-size: 1.05rem; }
+  ul { margin: 0; padding-left: 1.2em; }
+  li { margin: 4px 0; overflow-wrap: anywhere; }
+  ul.plain { list-style: none; padding: 0; }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  .dates { color: var(--muted); display: block; font-size: .92rem; }
+  .cut-start::before, .cut-end::after { content: "\2026"; color: var(--muted); }
+  .quoted::before { content: "\201C"; }
+  .quoted::after { content: "\201D"; }
+  .controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+  .step { color: var(--muted); font: .8rem ui-monospace, Menlo, Consolas, monospace; }
+  .keys { color: var(--muted); font-size: .8rem; text-align: center; margin: 10px 0 0; }
+  .end-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .full { position: fixed; inset: 0; background: rgba(10, 12, 18, .55); overflow-y: auto; padding: 16px; z-index: 10; }
+  .full[hidden] { display: none; }
+  .full-inner { max-width: 760px; margin: 0 auto; background: var(--card); color: var(--ink); border: 2px solid var(--frame); border-radius: 8px; padding: 18px 20px 24px; }
+  .full-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .full-head h2 { margin: 0; font-size: 1rem; color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; }
+  .full h3 { font-size: 1.05rem; margin: 18px 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .req { margin: 0 0 14px; }
+  .contact-line span + span::before { content: " \00b7 "; color: var(--muted); }
+  @media print {
+    body.printing-full .app { display: none; }
+    body.printing-full .full { position: static; background: none; padding: 0; }
+    body.printing-full .full-head button { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="who" id="who">CV</div>
+    <button id="btn-full" type="button">Show the full CV</button>
+  </header>
+  <div class="scene" id="scene"><canvas id="world" width="320" height="120" aria-hidden="true"></canvas></div>
+  <section class="panel" id="panel" aria-live="polite"></section>
+  <nav class="controls" aria-label="Game controls">
+    <button id="btn-back" type="button">&larr; Back</button>
+    <span class="step" id="step"></span>
+    <button id="btn-next" type="button" class="primary">Next &rarr;</button>
+  </nav>
+  <p class="keys">Right arrow or Space: next. Left arrow: back. Or tap the scene.</p>
+</div>
+
+<div class="full" id="full" hidden role="dialog" aria-modal="true" aria-labelledby="full-title">
+  <div class="full-inner">
+    <div class="full-head">
+      <h2 id="full-title">Full CV</h2>
+      <button id="btn-close" type="button">Close</button>
+    </div>
+    <div id="full-body"></div>
+  </div>
+</div>
+
+<script type="application/json" id="cv-data">{}</script>
+<script>
+(function () {
+  'use strict';
+  var data = null;
+  try { data = JSON.parse(document.getElementById('cv-data').textContent); } catch (e) { data = null; }
+  var F = data && data.fields ? data.fields : null;
+  function list(key) { return F && Array.isArray(F[key]) ? F[key] : []; }
+  var name = list('name'), contact = list('contact'), jobTitle = list('jobTitle'), company = list('company');
+  var levels = list('levels'), roles = list('roles'), traits = list('traits');
+
+  // ---------- text: every word below comes from the data block, copied by cv-fill.js ----------
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  // A piece of a line. Cuts show as an ellipsis on the requirement and evidence texts.
+  function piece(item, tag, cls, showCuts) {
+    var e = el(tag || 'span', cls, item.text);
+    if (showCuts && item.cutStart) e.classList.add('cut-start');
+    if (showCuts && item.cutEnd) e.classList.add('cut-end');
+    return e;
+  }
+  function add(parent) { for (var i = 1; i < arguments.length; i++) if (arguments[i]) parent.appendChild(arguments[i]); return parent; }
+
+  function jobList() {
+    if (!jobTitle.length && !company.length) return null;
+    var dl = el('dl');
+    if (jobTitle.length) add(dl, el('dt', null, 'Job title'), add(el('dd'), piece(jobTitle[0])));
+    if (company.length) add(dl, el('dt', null, 'Company'), add(el('dd'), piece(company[0])));
+    return dl;
+  }
+  function evidenceList(lv) {
+    var ul = el('ul');
+    lv.evidence.forEach(function (ev) { add(ul, piece(ev, 'li', null, true)); });
+    return ul;
+  }
+  function rolesList() {
+    var ul = el('ul', 'plain');
+    roles.forEach(function (r) {
+      var li = add(el('li'), piece(r.role, 'span', 'role'));
+      if (r.dates.length) add(li, piece(r.dates[0], 'span', 'dates'));
+      add(ul, li);
+    });
+    return ul;
+  }
+  function traitsList() {
+    var ul = el('ul');
+    traits.forEach(function (t) { add(ul, piece(t, 'li', 'quoted')); });
+    return ul;
+  }
+
+  // ---------- the stops: start, one door per level, roles, traits, end ----------
+  var stops = [{ kind: 'start' }];
+  levels.forEach(function (lv, i) { stops.push({ kind: 'door', level: lv, n: i + 1 }); });
+  if (roles.length) stops.push({ kind: 'roles' });
+  if (traits.length) stops.push({ kind: 'traits' });
+  stops.push({ kind: 'end' });
+
+  var panel = document.getElementById('panel');
+  function renderPanel(i) {
+    var s = stops[i];
+    panel.textContent = '';
+    if (!F) { add(panel, el('p', null, 'This file holds no CV data yet.')); return; }
+    if (s.kind === 'start') {
+      if (name.length || contact.length) {
+        add(panel, el('div', 'kicker', 'Player'));
+        if (name.length) add(panel, piece(name[0], 'h1', 'name'));
+        if (contact.length) {
+          var ul = el('ul', 'plain');
+          contact.forEach(function (c) { add(ul, piece(c, 'li')); });
+          add(panel, ul);
+        }
+      }
+      var job = jobList();
+      if (job) add(panel, el('div', 'kicker', 'The job'), job);
+      if (!panel.firstChild) add(panel, el('div', 'kicker', 'Start'));
+    } else if (s.kind === 'door') {
+      add(panel, el('div', 'kicker', 'Door ' + s.n + ' of ' + levels.length),
+        el('div', 'label', 'The job asks:'), piece(s.level.asks, 'blockquote', 'asks', true),
+        el('div', 'label', 'From the life document:'), evidenceList(s.level));
+    } else if (s.kind === 'roles') {
+      add(panel, el('div', 'kicker', 'Roles'), rolesList());
+    } else if (s.kind === 'traits') {
+      add(panel, el('div', 'kicker', 'Traits'), traitsList());
+    } else {
+      var again = el('button', null, 'Play again');
+      again.type = 'button';
+      again.addEventListener('click', function () { jumpTo(0); });
+      var full = el('button', 'primary', 'Show the full CV');
+      full.type = 'button';
+      full.addEventListener('click', openFull);
+      add(panel, el('div', 'kicker', 'End'), el('p', null, 'Everything in this game is also on one page.'),
+        add(el('div', 'end-actions'), full, again));
+    }
+  }
+
+  function buildFull() {
+    var body = document.getElementById('full-body');
+    body.textContent = '';
+    if (!F) { add(body, el('p', null, 'This file holds no CV data yet.')); return; }
+    if (name.length) add(body, piece(name[0], 'h1', 'name'));
+    if (contact.length) {
+      var line = el('p', 'contact-line');
+      contact.forEach(function (c) { add(line, piece(c)); });
+      add(body, line);
+    }
+    var job = jobList();
+    if (job) add(body, el('h3', null, 'The job'), job);
+    if (levels.length) {
+      add(body, el('h3', null, 'Requirements'));
+      levels.forEach(function (lv) {
+        add(body, add(el('div', 'req'), el('div', 'label', 'The job asks:'), piece(lv.asks, 'p', 'asks', true),
+          el('div', 'label', 'From the life document:'), evidenceList(lv)));
+      });
+    }
+    if (roles.length) add(body, el('h3', null, 'Roles'), rolesList());
+    if (traits.length) add(body, el('h3', null, 'Traits'), traitsList());
+  }
+
+  if (name.length) {
+    document.getElementById('who').textContent = name[0].text;
+    document.title = name[0].text + ' · CV game';
+  }
+
+  // ---------- pixel art ----------
+  var canvas = document.getElementById('world');
+  var ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  var W = 320, H = 120, GROUND = 100, FIRST = 64, GAP = 140;
+  var worldW = FIRST + (stops.length - 1) * GAP + 90;
+  function stopX(i) { return FIRST + i * GAP; }
+  function heroAt(i) { return stopX(i) - 22; }
+
+  var HERO_PAL = { o: '#1d1d2b', w: '#eef1f5', g: '#b9c3cf', v: '#24344d', h: '#7fb2e5', r: '#e2733a', R: '#b8562a', b: '#3a3f4c' };
+  var HERO_TOP = [
+    '....oooo....',
+    '..oowwwwoo..',
+    '.owwwwwwwwo.',
+    '.owwwvvvvvo.',
+    '.owwwvhvvvo.',
+    '.owwwvvvvvo.',
+    '.owwwwwwwwo.',
+    '..oowwwwoo..',
+    '.ooogwwwwgo.',
+    'orrrowwrrwgo',
+    'orrrowwrrwgo',
+    'orRrowwwwwgo',
+    '.ooogwwwwgo.'
+  ];
+  var LEGS_A = ['...owwoowwo.', '...owgoowgo.', '...obboobbo.', '...oooooooo.'];
+  var LEGS_B = ['..owwo.owwo.', '..owgo.owgo.', '.obbo...obbo', '.oooo...oooo'];
+  function sprite(rows, pal) {
+    var c = document.createElement('canvas');
+    c.width = rows[0].length; c.height = rows.length;
+    var x = c.getContext('2d');
+    rows.forEach(function (row, y) {
+      for (var i = 0; i < row.length; i++) {
+        var col = pal[row[i]];
+        if (col) { x.fillStyle = col; x.fillRect(i, y, 1, 1); }
+      }
+    });
+    return c;
+  }
+  var heroA = sprite(HERO_TOP.concat(LEGS_A), HERO_PAL);
+  var heroB = sprite(HERO_TOP.concat(LEGS_B), HERO_PAL);
+
+  function rect(x, y, w, h, col) { ctx.fillStyle = col; ctx.fillRect(Math.round(x), Math.round(y), w, h); }
+
+  function drawSky() {
+    rect(0, 0, W, 40, '#a9dcf5');
+    rect(0, 40, W, 30, '#bfe6f8');
+    rect(0, 70, W, 30, '#d7f0fa');
+  }
+  function drawClouds(cam) {
+    for (var k = 0; k < 40; k++) {
+      var x = k * 170 + 30 - cam * 0.25;
+      if (x < -40 || x > W + 10) continue;
+      var y = 10 + (k * 37) % 26;
+      rect(x + 6, y, 18, 4, '#ffffff');
+      rect(x, y + 4, 32, 5, '#ffffff');
+      rect(x + 2, y + 9, 28, 2, '#e3f1f8');
+    }
+  }
+  function drawHills(cam, factor, base, amp, col, seed) {
+    ctx.fillStyle = col;
+    for (var sx = 0; sx < W; sx++) {
+      var wx = sx + cam * factor;
+      var h = Math.round(base + amp * Math.sin(wx * 0.021 + seed) + amp * 0.5 * Math.sin(wx * 0.057 + seed * 2));
+      ctx.fillRect(sx, GROUND - h, 1, h);
+    }
+  }
+  function drawGround(cam) {
+    rect(0, GROUND, W, 1, '#8bd06a');
+    rect(0, GROUND + 1, W, 3, '#5fae4b');
+    rect(0, GROUND + 4, W, H - GROUND - 4, '#8a5a33');
+    for (var tx = -((cam) % 16) - 16; tx < W; tx += 16) {
+      rect(tx, GROUND + 4, 8, 8, '#7a4d2b');
+      rect(tx + 8, GROUND + 12, 8, 8, '#7a4d2b');
+    }
+  }
+  function drawDoor(x, open) {
+    // stone frame 18 wide, 28 tall, standing on the ground
+    var top = GROUND - 28;
+    rect(x, top, 18, 28, '#1d1d2b');
+    rect(x + 1, top + 1, 16, 27, '#a4a9b3');
+    rect(x + 15, top + 1, 2, 27, '#7b818c');
+    rect(x + 1, top + 2, 16, 1, '#7b818c');
+    rect(x + 3, top + 3, 12, 25, '#1d1d2b');
+    if (open === 0) {
+      rect(x + 4, top + 4, 10, 24, '#2f6f73');
+      rect(x + 6, top + 4, 1, 24, '#23575a'); rect(x + 9, top + 4, 1, 24, '#23575a'); rect(x + 12, top + 4, 1, 24, '#23575a');
+      rect(x + 12, top + 15, 2, 2, '#f2c14e');
+    } else {
+      rect(x + 4, top + 4, 10, 24, '#151827');
+      rect(x + 5, top + 20, 8, 8, '#2a2440');
+      var leaf = open === 1 ? 5 : 2;
+      rect(x + 4, top + 4, leaf, 24, '#2f6f73');
+      rect(x + 4 + leaf - 1, top + 4, 1, 24, '#23575a');
+      if (open === 2) rect(x + 1, GROUND + 1, 16, 2, '#e9c46a');
+    }
+  }
+  function drawBoard(x, paper) {
+    var top = GROUND - 30;
+    rect(x + 9, top + 12, 4, 18, '#1d1d2b');
+    rect(x + 10, top + 12, 2, 18, '#7a4a24');
+    rect(x, top, 22, 14, '#1d1d2b');
+    rect(x + 1, top + 1, 20, 12, '#a0673a');
+    rect(x + 2, top + 2, 18, 9, paper);
+    rect(x + 4, top + 4, 13, 1, '#b9ad8e'); rect(x + 4, top + 6, 10, 1, '#b9ad8e'); rect(x + 4, top + 8, 12, 1, '#b9ad8e');
+  }
+  function drawFlag(x) {
+    rect(x + 4, GROUND - 34, 2, 34, '#1d1d2b');
+    rect(x + 6, GROUND - 34, 14, 9, '#1d1d2b');
+    rect(x + 6, GROUND - 33, 13, 7, '#e2733a');
+    rect(x + 3, GROUND - 2, 4, 2, '#1d1d2b');
+  }
+  function drawBush(x) {
+    rect(x, GROUND - 6, 14, 6, '#3f8a3a');
+    rect(x + 2, GROUND - 9, 9, 3, '#3f8a3a');
+    rect(x + 3, GROUND - 8, 3, 2, '#5fae4b');
+  }
+
+  // ---------- movement ----------
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var cur = 0, heroX = heroAt(0), facing = 1;
+  var walk = null;          // { from, to, t0, dur, target }
+  var opened = {};          // stop index -> time it opened
+  var looping = false;
+
+  function doorState(i, now) {
+    if (!(i in opened)) return 0;
+    return now - opened[i] < 120 ? 1 : 2;
+  }
+  function camera() { return Math.max(0, Math.min(worldW - W, heroX - 110)); }
+
+  function draw(now) {
+    var cam = camera();
+    drawSky();
+    drawClouds(cam);
+    drawHills(cam, 0.3, 18, 6, '#a8d49a', 0.4);
+    drawHills(cam, 0.6, 9, 4, '#86c070', 2.1);
+    drawGround(cam);
+    for (var i = 0; i < stops.length; i++) {
+      var sx = stopX(i) - cam;
+      if (sx < -40 || sx > W + 40) continue;
+      if (i > 0) drawBush(sx + 58);
+      var k = stops[i].kind;
+      if (k === 'door') drawDoor(sx - 9, doorState(i, now));
+      else if (k === 'end') drawFlag(sx - 8);
+      else drawBoard(sx - 11, k === 'traits' ? '#e8f1e4' : k === 'roles' ? '#f7ead2' : '#f3ecd8');
+    }
+    var frame = walk && Math.floor(heroX / 6) % 2 ? heroB : heroA;
+    var hx = Math.round(heroX - cam), hy = GROUND - frame.height;
+    if (facing < 0) {
+      ctx.save(); ctx.translate(hx + frame.width, hy); ctx.scale(-1, 1); ctx.drawImage(frame, 0, 0); ctx.restore();
+    } else {
+      ctx.drawImage(frame, hx, hy);
+    }
+  }
+
+  function tick(now) {
+    if (walk) {
+      var p = walk.dur ? Math.min(1, (now - walk.t0) / walk.dur) : 1;
+      var e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      heroX = walk.from + (walk.to - walk.from) * e;
+      if (p >= 1) arrive(now);
+    }
+    draw(now);
+    var animating = walk || Object.keys(opened).some(function (k) { return now - opened[k] < 200; });
+    if (animating) requestAnimationFrame(tick); else looping = false;
+  }
+  function kick() { if (!looping) { looping = true; requestAnimationFrame(tick); } }
+
+  function arrive(now) {
+    cur = walk.target;
+    heroX = heroAt(cur);
+    walk = null;
+    if (stops[cur].kind === 'door' && !(cur in opened)) opened[cur] = now;
+    panel.classList.remove('walking');
+    renderPanel(cur);
+    updateControls();
+  }
+  function go(target) {
+    if (target < 0 || target >= stops.length) return;
+    if (walk) { arrive(performance.now()); return; }   // a press during a walk finishes it
+    facing = target >= cur ? 1 : -1;
+    var from = heroX, to = heroAt(target);
+    walk = { from: from, to: to, t0: performance.now(), dur: reduceMotion ? 0 : Math.min(900, Math.abs(to - from) * 4.5), target: target };
+    panel.classList.add('walking');
+    kick();
+  }
+  function jumpTo(i) {
+    walk = null; cur = i; heroX = heroAt(i); facing = 1;
+    renderPanel(cur); updateControls(); kick();
+  }
+  function next() { go(cur + 1); }
+  function back() { go(cur - 1); }
+
+  var btnNext = document.getElementById('btn-next');
+  var btnBack = document.getElementById('btn-back');
+  var step = document.getElementById('step');
+  function updateControls() {
+    btnBack.disabled = cur === 0;
+    btnNext.disabled = cur === stops.length - 1;
+    step.textContent = 'Stop ' + (cur + 1) + ' of ' + stops.length;
+  }
+
+  // ---------- the full CV, one page ----------
+  var full = document.getElementById('full');
+  var btnFull = document.getElementById('btn-full');
+  var btnClose = document.getElementById('btn-close');
+  var lastFocus = null;
+  function openFull() {
+    lastFocus = document.activeElement;
+    buildFull();
+    full.hidden = false;
+    document.body.classList.add('printing-full');
+    btnClose.focus();
+  }
+  function closeFull() {
+    full.hidden = true;
+    document.body.classList.remove('printing-full');
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  btnFull.addEventListener('click', openFull);
+  btnClose.addEventListener('click', closeFull);
+  full.addEventListener('click', function (e) { if (e.target === full) closeFull(); });
+
+  btnNext.addEventListener('click', next);
+  btnBack.addEventListener('click', back);
+  document.getElementById('scene').addEventListener('click', next);
+  document.addEventListener('keydown', function (e) {
+    if (!full.hidden) { if (e.key === 'Escape') closeFull(); return; }
+    var onButton = e.target && e.target.tagName === 'BUTTON';
+    if (e.key === 'ArrowRight' || ((e.key === ' ' || e.key === 'Enter') && !onButton)) { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+  });
+
+  renderPanel(0);
+  updateControls();
+  kick();
+})();
+</script>
+</body>
+</html>
