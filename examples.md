@@ -16,7 +16,7 @@ For each of the three runs:
 4. **Where to look:** one cut piece beside its full line, one requirement left out, and one life line left out.
 
 ## The three check sheets side by side (once filled)
-One table, one column per run, one row per field (Name, Contact, Job title, Company, Levels, Roles, Traits), so the shape can be seen holding while the content changes.
+One table, one column per run, one row per field (Name, Contact, Job title, Company, Chapters, Roles, Traits), so the shape can be seen holding while the content changes.
 
 | Field | Run 1 | Run 2 | Run 3 |
 |---|---|---|---|
@@ -24,6 +24,6 @@ One table, one column per run, one row per field (Name, Contact, Job title, Comp
 | Contact | | | |
 | Job title | | | |
 | Company | | | |
-| Levels | | | |
+| Chapters | | | |
 | Roles | | | |
 | Traits | | | |

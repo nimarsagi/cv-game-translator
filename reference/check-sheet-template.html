@@ -46,8 +46,17 @@
   .full-line { grid-column: 3; color: var(--muted); font-size: .85rem; }
   .why { grid-column: 3; color: var(--bad); font-size: .85rem; }
   .cut-start::before, .cut-end::after { content: "\2026"; color: var(--muted); }
-  .level { border-left: 4px solid var(--accent); padding-left: 12px; margin: 12px 0; }
-  .level-label { font-size: .8rem; font-weight: 700; color: var(--muted); margin: 8px 0 2px; }
+  .chapter { border-left: 4px solid var(--accent); padding-left: 12px; margin: 14px 0; }
+  .chapter + .chapter { padding-top: 4px; }
+  .chapter h3 { margin: 0 0 2px; }
+  .meta { font-size: .85rem; margin: 0 0 4px; }
+  .meta b { color: var(--accent); }
+  .swap { font-size: .8rem; color: var(--muted); margin: 0 0 6px; }
+  .swap summary { cursor: pointer; }
+  .swap p { margin: 4px 0 0; }
+  .req { background: var(--soft); border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+  .req-name { font-size: .8rem; font-weight: 700; margin: 0 0 2px; }
+  .label { font-size: .8rem; font-weight: 700; color: var(--muted); margin: 8px 0 2px; }
   table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--line); }
   th { font-size: .8rem; color: var(--muted); font-weight: 700; }
@@ -86,7 +95,7 @@
   <div id="fields"></div>
 
   <h2>2. Requirements left out: no evidence found</h2>
-  <p class="hint">Requirements from the job post with no matching line in the life document. They get no door in the game.</p>
+  <p class="hint">Requirements from the job post with no matching line in the life document. They are not in the game.</p>
   <div id="left-out"></div>
 
   <h2>3. Every life-document line</h2>
@@ -172,6 +181,32 @@
   }
   function emptyNote() { return el('div', 'empty', 'not in source'); }
 
+  // One chapter: where it plays, the scenes it could swap to, its title, story and requirements.
+  function chapterBox(ch, i) {
+    var w = 'Chapter ' + (i + 1);
+    var others = (C.SCENES || []).filter(function (s) { return s !== ch.scene; });
+    var meta = add(el('p', 'meta'), document.createTextNode('Part: '), el('b', null, String(ch.part)),
+      document.createTextNode(' · Scene: '), el('b', null, String(ch.scene)));
+    var swap = add(el('details', 'swap'), el('summary', null, 'Other scenes it could swap to'),
+      el('p', 'mono', others.join(', ')),
+      el('p', null, 'To swap, change this chapter\u2019s scene: row in map.txt and run Fill again.'));
+    var wrap = add(el('div', 'chapter'), el('h3', null, w), meta, swap,
+      el('div', 'label', 'Title:'), itemRow(w + ', title', ch.title),
+      el('div', 'label', 'Story:'));
+    (ch.story || []).forEach(function (s, k) { add(wrap, itemRow(w + ', story ' + (k + 1), s)); });
+    var reqs = ch.requirements || [];
+    if (!reqs.length) add(wrap, el('div', 'label', 'Requirements: none'));
+    reqs.forEach(function (rq, j) {
+      var wr = w + ', requirement ' + (j + 1);
+      var box = add(el('div', 'req'), el('div', 'req-name', 'Requirement ' + (j + 1)),
+        el('div', 'label', 'The job asks:'), itemRow(wr + ', the job asks', rq.asks),
+        el('div', 'label', 'From the life document:'));
+      (rq.evidence || []).forEach(function (ev, k) { add(box, itemRow(wr + ', evidence ' + (k + 1), ev)); });
+      add(wrap, box);
+    });
+    return wrap;
+  }
+
   document.getElementById('files').textContent = sheet
     ? 'From: ' + (sheet.lifeFile || 'life document') + ' + ' + (sheet.jobFile || 'job post')
     : 'This file holds no run data yet.';
@@ -182,15 +217,8 @@
     var box = add(el('section', 'field'), el('div', 'field-name', f.label));
     var v = F && Array.isArray(F[f.key]) ? F[f.key] : [];
     if (!v.length) { add(fieldsBox, add(box, emptyNote())); return; }
-    if (f.key === 'levels') {
-      v.forEach(function (lv, i) {
-        var w = 'Level ' + (i + 1);
-        var wrap = add(el('div', 'level'), el('h3', null, w),
-          el('div', 'level-label', 'The job asks:'), itemRow(w + ', the job asks', lv.asks),
-          el('div', 'level-label', 'From the life document:'));
-        lv.evidence.forEach(function (ev, k) { add(wrap, itemRow(w + ', evidence ' + (k + 1), ev)); });
-        add(box, wrap);
-      });
+    if (f.key === 'chapters') {
+      v.forEach(function (ch, i) { add(box, chapterBox(ch, i)); });
     } else if (f.key === 'roles') {
       v.forEach(function (ro, i) {
         var w = 'Role ' + (i + 1);
@@ -228,11 +256,13 @@
 
   // ---------- summary ----------
   function stat(n, what) { return add(el('div', 'stat'), el('b', null, String(n)), el('span', null, what)); }
-  var levels = F && Array.isArray(F.levels) ? F.levels.length : 0;
+  var chapters = F && Array.isArray(F.chapters) ? F.chapters : [];
+  var shownReqs = chapters.reduce(function (n, ch) { return n + (Array.isArray(ch.requirements) ? ch.requirements.length : 0); }, 0);
   var lifeUsed = acc.life.filter(function (r) { return r.uses.length; }).length;
   var emptyFields = (C.FIELDS || []).filter(function (f) { return !(F && Array.isArray(F[f.key]) && F[f.key].length); }).length;
   add(document.getElementById('summary'),
-    stat(levels, 'levels (doors) in the game'),
+    stat(chapters.length, 'chapters'),
+    stat(shownReqs, 'requirements shown'),
     stat(leftOut.length, 'requirements left out'),
     stat(lifeUsed + ' / ' + lifeLines.length, 'life-document lines used'),
     stat(emptyFields, 'fields not in source'));

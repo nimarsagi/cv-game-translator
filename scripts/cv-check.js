@@ -24,9 +24,16 @@
 })(this, function (loadNumber) {
   'use strict';
 
-  var DATA_FORMAT = 'cv-game-data/1';
-  var SHEET_FORMAT = 'cv-sheet-data/1';
+  var DATA_FORMAT = 'cv-game-data/2';
+  var SHEET_FORMAT = 'cv-sheet-data/2';
+  var MAX_CHAPTERS = 10;
+  var MAX_STORY = 4;
   var MAX_EVIDENCE = 3;
+  // When a chapter happens, in the only order the parts may come in.
+  var PARTS = ['past', 'present', 'future'];
+  // The places built into the game, in map-format.md's order. A scene carries no words.
+  var SCENES = ['home', 'classroom', 'stage', 'film-set', 'lecture-hall', 'library', 'trading-screens',
+    'ai-network', 'crossroads', 'city-street', 'workshop', 'wasteland', 'sky-temple', 'sunrise-city'];
 
   // The fixed fields, in the fixed order. source: L = life document, J = job post.
   var FIELDS = [
@@ -34,7 +41,7 @@
     { key: 'contact', label: 'Contact', source: 'L', max: 4 },
     { key: 'jobTitle', label: 'Job title', source: 'J', max: 1 },
     { key: 'company', label: 'Company', source: 'J', max: 1 },
-    { key: 'levels', label: 'Levels', source: null, max: null },
+    { key: 'chapters', label: 'Chapters', source: null, max: MAX_CHAPTERS },
     { key: 'roles', label: 'Roles', source: 'L', max: 8 },
     { key: 'traits', label: 'Traits', source: 'L', max: 5 }
   ];
@@ -150,18 +157,37 @@
       var v = fields[f.key];
       if (!Array.isArray(v)) { problems.push(f.label + ' is missing'); return; }
       if (f.max && v.length > f.max) problems.push(f.label + ' holds ' + v.length + ' (at most ' + f.max + ')');
-      if (f.key === 'levels') {
-        v.forEach(function (lv, i) {
-          var w = 'Level ' + (i + 1);
-          if (!lv || typeof lv !== 'object' || Object.keys(lv).sort().join(',') !== 'asks,evidence') {
-            problems.push(w + ' is not shaped as { asks, evidence }');
-            return;
+      if (f.key === 'chapters') {
+        var top = -1;
+        v.forEach(function (ch, i) {
+          var w = 'Chapter ' + (i + 1);
+          if (!ch || typeof ch !== 'object' || Array.isArray(ch)) { problems.push(w + ' is not shaped as { title, part, scene, story, requirements }'); return; }
+          if (Object.keys(ch).sort().join(',') !== 'part,requirements,scene,story,title') {
+            problems.push(w + ' is not shaped as { title, part, scene, story, requirements }');
           }
-          add(w + ', the job asks', 'J', lv.asks);
-          if (!Array.isArray(lv.evidence) || lv.evidence.length < 1 || lv.evidence.length > MAX_EVIDENCE) {
-            problems.push(w + ' must hold 1 to ' + MAX_EVIDENCE + ' pieces of evidence');
+          add(w + ', title', 'L', ch.title);
+          var p = PARTS.indexOf(ch.part);
+          if (p === -1) problems.push(w + ': part ' + JSON.stringify(ch.part) + ' is not past, present or future');
+          else if (p < top) problems.push(w + ' is "' + ch.part + '" but comes after a "' + PARTS[top] + '" chapter: the parts never go back');
+          else top = p;
+          if (SCENES.indexOf(ch.scene) === -1) problems.push(w + ': scene ' + JSON.stringify(ch.scene) + ' is not one of the game\'s scenes');
+          if (!Array.isArray(ch.story) || ch.story.length < 1 || ch.story.length > MAX_STORY) {
+            problems.push(w + ' must hold 1 to ' + MAX_STORY + ' story pieces');
           }
-          (Array.isArray(lv.evidence) ? lv.evidence : []).forEach(function (e, k) { add(w + ', evidence ' + (k + 1), 'L', e); });
+          (Array.isArray(ch.story) ? ch.story : []).forEach(function (s, k) { add(w + ', story ' + (k + 1), 'L', s); });
+          if (!Array.isArray(ch.requirements)) problems.push(w + ': requirements must be a list');
+          (Array.isArray(ch.requirements) ? ch.requirements : []).forEach(function (rq, j) {
+            var wr = w + ', requirement ' + (j + 1);
+            if (!rq || typeof rq !== 'object' || Object.keys(rq).sort().join(',') !== 'asks,evidence') {
+              problems.push(wr + ' is not shaped as { asks, evidence }');
+              return;
+            }
+            add(wr + ', the job asks', 'J', rq.asks);
+            if (!Array.isArray(rq.evidence) || rq.evidence.length < 1 || rq.evidence.length > MAX_EVIDENCE) {
+              problems.push(wr + ' must hold 1 to ' + MAX_EVIDENCE + ' pieces of evidence');
+            }
+            (Array.isArray(rq.evidence) ? rq.evidence : []).forEach(function (e, k) { add(wr + ', evidence ' + (k + 1), 'L', e); });
+          });
         });
       } else if (f.key === 'roles') {
         v.forEach(function (ro, i) {
@@ -273,7 +299,8 @@
   }
 
   return {
-    DATA_FORMAT: DATA_FORMAT, SHEET_FORMAT: SHEET_FORMAT, FIELDS: FIELDS, MAX_EVIDENCE: MAX_EVIDENCE,
+    DATA_FORMAT: DATA_FORMAT, SHEET_FORMAT: SHEET_FORMAT, FIELDS: FIELDS, PARTS: PARTS, SCENES: SCENES,
+    MAX_CHAPTERS: MAX_CHAPTERS, MAX_STORY: MAX_STORY, MAX_EVIDENCE: MAX_EVIDENCE,
     clean: clean, parseRef: parseRef, locate: locate, makeItem: makeItem, checkItem: checkItem, walk: walk,
     checkGame: checkGame, checkSheet: checkSheet, accountLines: accountLines, readBlock: readBlock, writeBlock: writeBlock,
     toBlockJSON: toBlockJSON, readJSONBlock: readJSONBlock, templateFingerprint: templateFingerprint

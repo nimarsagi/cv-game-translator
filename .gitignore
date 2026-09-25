@@ -1,3 +1,5 @@
 runs/
 my-story/
 .DS_Store
+.claude/*
+!.claude/commands/
