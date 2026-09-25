@@ -62,7 +62,7 @@ One HTML file, nothing loaded from outside, no saved progress. Plays in any brow
 A run passes only if all of these hold. `cv-check.js` tests them; the check sheet's section 5 runs the same code.
 1. Every piece is found in the line it cites, character for character, ignoring only spacing, bold marks and a leading bullet or heading mark, and starting and ending on word edges.
 2. Its "…" marks match where the line was actually cut.
-3. The cut drops none of the meaning-flipping words listed in `map-format.md`.
+3. The cut drops none of the meaning-flipping words listed in `map-format.md` (the "not" words in any line; in life-document lines, also words like "helped" and "partly").
 4. Each field holds only lines from its own input (L or J) and no more pieces than its limit.
 5. The data holds the seven fields and nothing else.
 6. `game.html` is `game-template.html` with only its data block changed.

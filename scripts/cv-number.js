@@ -3,14 +3,15 @@
  * Splits a document into numbered lines without changing a character.
  * A new line starts at every line break in the document and at the end of
  * every sentence. Lines with no letter or digit (like "---") are skipped.
+ * A line break followed by a lowercase letter doesn't count: it is a sentence
+ * wrapped mid-way, as in text copied from a PDF, and the two parts stay one line.
  *
  *   node cv-number.js <run-folder>
  *     reads   life-document.txt|.md and job-post.txt|.md in the run folder
  *     writes  life-lines.txt (L1, L2 …) and job-lines.txt (J1, J2 …) next to them
  *
  * The same code runs in three places: here, inside cv-check.js, and inside
- * check-sheet.html (the paste-in check). Change it here, then run
- * `node cv-fill.js --refresh-template` so the check sheet carries the new copy.
+ * each check-sheet.html (the paste-in check), where cv-fill.js copies it every run.
  */
 (function (root, factory) {
   var api = factory();
@@ -55,10 +56,16 @@
     return parts.map(function (p) { return p.trim(); }).filter(function (p) { return HAS_WORD.test(p); });
   }
 
+  // The text as read: byte-order mark dropped, line endings made one kind, and a
+  // line break before a lowercase letter joined with a space (a wrapped sentence).
+  function prepare(text) {
+    return String(text).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(/[ \t]*\n[ \t]*(?=\p{Ll})/gu, ' ');
+  }
+
   // The document as an array of line texts. Line 1 is index 0.
   function splitIntoLines(text) {
     var out = [];
-    String(text).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n').forEach(function (physical) {
+    prepare(text).split('\n').forEach(function (physical) {
       splitSentences(physical).forEach(function (s) { out.push(s); });
     });
     return out;
@@ -67,7 +74,7 @@
   // Proof that splitting changed no character: every line is found, in order,
   // and what lies between lines holds no letter or digit.
   function verifyLines(text, lines) {
-    var src = String(text).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    var src = prepare(text);
     var at = 0;
     for (var i = 0; i < lines.length; i++) {
       var found = src.indexOf(lines[i], at);

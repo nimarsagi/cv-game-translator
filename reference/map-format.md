@@ -16,19 +16,19 @@
 
 ## The kinds
 
-| Kind | Takes | Belongs to |
-|---|---|---|
-| `name:` | an L line | |
-| `contact:` | an L line | |
-| `job title:` | a J line | |
-| `company:` | a J line | |
-| `requirement:` | a J line | |
-| `evidence:` | an L line | the `requirement:` row just above it |
-| `role:` | an L line | |
-| `dates:` | an L line | the `role:` row just above it |
-| `trait:` | an L line | |
+| Kind | Takes | Belongs to | At most |
+|---|---|---|---|
+| `name:` | an L line | | 1 |
+| `contact:` | an L line | | 4 |
+| `job title:` | a J line | | 1 |
+| `company:` | a J line | | 1 |
+| `requirement:` | a J line | | no limit |
+| `evidence:` | an L line | the `requirement:` row just above it | 3 per requirement |
+| `role:` | an L line | | 8 |
+| `dates:` | an L line | the `role:` row just above it | 1 per role |
+| `trait:` | an L line | | 5 |
 
-How many of each a field may hold is in `output-contract.md`; Fill stops if a field holds more.
+Fill stops if a field holds more.
 
 Order in the file doesn't matter for anything except `evidence:` (under its requirement) and `dates:` (under its role). Fill puts levels in the job post's line order and everything else in the life document's line order, so the result never depends on the order you wrote things in.
 
@@ -37,7 +37,9 @@ A `requirement:` with no `evidence:` under it is a requirement left out: no door
 ## What Fill refuses
 - A line number that doesn't exist, or an L line where a J line belongs (and the other way round).
 - A piece that isn't in its line word for word, or that starts or ends in the middle of a word.
-- A cut that drops a word that can flip the meaning: not, no, never, none, nor, cannot, without, n't, help(ed/ing), assist(ed/ing), supported, supporting, contribute(d/ing), partly, partially, tried, attempted, almost, nearly, hardly, barely. Use the whole line, or a piece that keeps the word.
+- A cut that drops a word that can flip the meaning. Use the whole line, or a piece that keeps the word.
+  - In any line: not, no, never, none, nor, cannot, without, n't.
+  - In L lines only, also: help(ed/ing), assist(ed/ing), supported, supporting, contribute(d/ing), partly, partially, tried, attempted, almost, nearly, hardly, barely. Cutting "helping agents" out of a job post's list of duties is fine; cutting "helped" out of "I helped build the website" is not.
 - The same piece twice in one field, or more pieces than a field may hold.
 
 ## The shape of a map (line numbers only, not a real run)

@@ -12,7 +12,7 @@ The contract for both is in `output-contract.md`.
 
 ## How it stays faithful
 - **The AI only picks line numbers.** Both inputs are split into numbered lines (L1… for the life document, J1… for the job post) by a script that changes no character. Claude writes a map of line numbers and exact pieces, and nothing else. A script copies each text out of its line into the game. No word in the game passes through the AI.
-- **The check.** Every piece of text in the game must appear inside the line it cites, character for character, ignoring only spacing, bold marks and a leading bullet. A cut shows as "…", and a cut may not drop a word that flips the meaning ("not", "never", "helped", "partly"…). One miss fails the run, and the game isn't handed over.
+- **The check.** Every piece of text in the game must appear inside the line it cites, character for character, ignoring only spacing, bold marks and a leading bullet. A cut shows as "…", and a cut may not drop a word that flips the meaning: "not" or "never" anywhere, and in the life document also words like "helped" or "partly". One miss fails the run, and the game isn't handed over.
 - **Nothing drops out silently.** Every line of both inputs is listed on the check sheet: used (and where), left out, or not a requirement.
 - **Relevant is a rule, not an opinion.** Each thing the job post asks for becomes a door if the life document has evidence for it, in the job post's order. With no evidence, it gets no door and is listed on the check sheet.
 

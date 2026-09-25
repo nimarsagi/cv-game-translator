@@ -6,13 +6,13 @@
  *
  *   node cv-check.js <run-folder>
  *     reads   game.html, check-sheet.html, life-document.*, job-post.* in the run folder,
- *             and game-template.html, check-sheet-template.html
+ *             and game-template.html
  *     writes  check-result.txt; exit code 0 = pass, 1 = fail
+ *     cv-fill.js runs it at the end of every Fill.
  *
- * The same file is copied into check-sheet.html, where a reader pastes the two
+ * Fill copies this file into each check-sheet.html, where a reader pastes the two
  * original documents and sees each item turn green or red. cv-fill.js uses it
  * too, so a bad piece is caught before anything is written.
- * After changing this file run `node cv-fill.js --refresh-template`.
  */
 (function (root, factory) {
   var api = factory(function () {
@@ -41,7 +41,16 @@
 
   var WORD = /[\p{L}\p{N}]/u;
   // A cut may not drop any of these words: each can flip what the rest says.
-  var FLIP = /(?:^|[^\p{L}\p{N}])(not|no|never|none|nor|cannot|without|help|helped|helping|assist|assisted|assisting|supported|supporting|contribute|contributed|contributing|partly|partially|tried|attempted|almost|nearly|hardly|barely)(?=$|[^\p{L}\p{N}])|\p{L}(n['’]t)(?=$|[^\p{L}\p{N}])/iu;
+  // In a life-document line all of them count: "helped build" cut to "build" overstates the person.
+  // In a job-post line only the "not" words count: cutting "helping agents" out of a list of
+  // duties names fewer duties, but cutting "not" out of "Python is not required" invents one.
+  var NEGATIONS = ['not', 'no', 'never', 'none', 'nor', 'cannot', 'without'];
+  var SOFTENERS = ['help', 'helped', 'helping', 'assist', 'assisted', 'assisting', 'supported', 'supporting',
+    'contribute', 'contributed', 'contributing', 'partly', 'partially', 'tried', 'attempted', 'almost', 'nearly', 'hardly', 'barely'];
+  function wordPattern(words) {
+    return new RegExp('(?:^|[^\\p{L}\\p{N}])(' + words.join('|') + ')(?=$|[^\\p{L}\\p{N}])|\\p{L}(n[\'’]t)(?=$|[^\\p{L}\\p{N}])', 'iu');
+  }
+  var FLIP = { L: wordPattern(NEGATIONS.concat(SOFTENERS)), J: wordPattern(NEGATIONS) };
 
   function stripMarker(s) {
     return String(s).replace(/^\s*(?:[-*+•·–—]|\d{1,2}[.)]|#{1,6})\s+/u, '');
@@ -87,8 +96,8 @@
     return null;
   }
 
-  function flipWord(dropped) {
-    var m = FLIP.exec(dropped);
+  function flipWord(dropped, source) {
+    var m = FLIP[source].exec(dropped);
     return m ? (m[1] || m[2]) : null;
   }
 
@@ -107,7 +116,7 @@
       throw new Error(piece == null ? r.ref + ' has no words'
         : r.ref + ': "' + piece + '" is not in this line word for word. The line reads: ' + clean(line));
     }
-    var flip = flipWord(loc.dropped);
+    var flip = flipWord(loc.dropped, r.source);
     if (flip) throw new Error(r.ref + ': the cut drops "' + flip + '", which can flip the meaning. Use the whole line, or a piece that keeps "' + flip + '".');
     return { item: { ref: r.ref, text: loc.text, cutStart: loc.cutStart, cutEnd: loc.cutEnd }, order: r.n * 100000 + loc.start };
   }
@@ -126,7 +135,7 @@
     var loc = locate(line, item.text, true);
     if (!loc) return 'not found in ' + r.ref + ' character for character';
     if (loc.cutStart !== item.cutStart || loc.cutEnd !== item.cutEnd) return 'the … marks do not match where ' + r.ref + ' was cut';
-    var flip = flipWord(loc.dropped);
+    var flip = flipWord(loc.dropped, r.source);
     if (flip) return 'the cut drops "' + flip + '"';
     return null;
   }
@@ -308,7 +317,6 @@ if (typeof require === 'function' && typeof module === 'object' && require.main 
     var gameHtml = read(inRun('game.html', true));
     var sheetHtml = read(inRun('check-sheet.html', true));
     var gameTemplate = read(factoryFile('game-template.html'));
-    var sheetTemplate = read(factoryFile('check-sheet-template.html'));
     var numberSrc = read(path.join(__dirname, 'cv-number.js')).trim();
     var checkSrc = read(__filename).trim();
 
@@ -344,9 +352,8 @@ if (typeof require === 'function' && typeof module === 'object' && require.main 
     line(sheetData !== null && sheetData.trim() === String(C.readBlock(gameHtml, 'cv-data')).trim(), 'check-sheet.html holds the same data as game.html');
     line(String(C.readBlock(sheetHtml, 'cv-number-code')).trim() === numberSrc && String(C.readBlock(sheetHtml, 'cv-check-code')).trim() === checkSrc,
       'check-sheet.html carries the same checker code as cv-number.js and cv-check.js');
-    line(String(C.readBlock(sheetTemplate, 'cv-number-code')).trim() === numberSrc && String(C.readBlock(sheetTemplate, 'cv-check-code')).trim() === checkSrc &&
-      String(C.readBlock(sheetTemplate, 'cv-template-fingerprint')).trim() === JSON.stringify(C.templateFingerprint(gameTemplate)),
-      'check-sheet-template.html is up to date with the scripts and game-template.html');
+    line(String(C.readBlock(sheetHtml, 'cv-template-fingerprint')).trim() === JSON.stringify(C.templateFingerprint(gameTemplate)),
+      'check-sheet.html knows the fingerprint of game-template.html');
 
     var items = result.results.length;
     var sheetItems = sheetResult.results.length;

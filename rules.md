@@ -1,18 +1,19 @@
 # Rules: how a run goes and how the mapping works
 
-A run has four steps. Only step 2 is yours; the other three are scripts. The one stop for the person is at the end.
+A run has four steps. Only step 2 is yours; the other three are scripts, so code execution must be on. The one stop for the person is at the end.
 
 ## Before step 1: the run folder
-- **Claude Code:** make `runs/<company>-<job-title>/` (lowercase, dashes). Save the two inputs there as `life-document.txt` (or `.md`) and `job-post.txt` (or `.md`), exactly as given: don't tidy, fix spelling or reformat.
-- **claude.ai Project, code execution on:** in your sandbox, make one working folder. Copy into it `cv-number.js`, `cv-fill.js`, `cv-check.js`, `game-template.html` and `check-sheet-template.html` from the Project files, and save the two inputs there under the names above. The scripts find each other in the same folder. Run each command below from that folder, as `node cv-number.js .` and so on.
-- **Code execution off:** see "By hand" at the end.
+Ask for the two inputs as files (plain text or Markdown) and copy them into the run folder with a command such as `cp`, as `life-document.txt` (or `.md`) and `job-post.txt` (or `.md`). Never type an input out: it costs more than the rest of the run, and a character changed on the way (a typo fixed, a name spelled the usual way) can't be caught, because the check compares against your copy. If the person can only paste, type it out exactly and tell them that this one step is unchecked.
+- **Claude Code:** the run folder is `runs/<company>-<job-title>/` (lowercase, dashes).
+- **claude.ai Project:** in your sandbox, make one working folder. Copy into it `cv-number.js`, `cv-fill.js`, `cv-check.js`, `game-template.html` and `check-sheet-template.html` from the Project files, plus the two inputs. The scripts find each other in the same folder. Run each command below from that folder, as `node cv-number.js .` and so on.
+- **claude.ai Skill:** make a working folder in your sandbox and copy the two inputs into it. Run the scripts from the skill's own folder, as `node <skill folder>/scripts/cv-number.js <working folder>` and so on; they find the templates themselves.
 
 ## Where a run stands
 Look in the run folder: `life-lines.txt` means step 1 is done, `map.txt` step 2, `game.html` step 3, and `check-result.txt` ending in `RESULT: PASS` step 4.
 
 ## Step 1: Number (script)
 `node scripts/cv-number.js runs/<run>`
-Writes `life-lines.txt` (L1, L2 …) and `job-lines.txt` (J1, J2 …). A new line starts at every line break and every sentence end; lines with no letter or digit are skipped. It fails if a single character would change. Never edit these files: if an input is wrong, fix the input and run Number again.
+Writes `life-lines.txt` (L1, L2 …) and `job-lines.txt` (J1, J2 …). A new line starts at every line break and every sentence end, except a line break followed by a lowercase letter: that is one sentence wrapped mid-way (as in text copied from a PDF) and stays one line. Lines with no letter or digit are skipped. It fails if a single character would change. Never edit these files: if an input is wrong, fix the input and run Number again.
 
 ## Step 2: Map (you)
 Read `life-lines.txt` and `job-lines.txt`, then write `map.txt` in the run folder, in the format in `map-format.md`. The map holds only line numbers and exact pieces of those lines. Never a word of your own.
@@ -21,15 +22,15 @@ Read `life-lines.txt` and `job-lines.txt`, then write `map.txt` in the run folde
 
 **Requirements.** Go through the job post line by line. A requirement is anything the job asks the person to have or do: must-haves, nice-to-haves and duties. The company intro, benefits, salary and how to apply are not requirements.
 - Write every requirement in the map, with or without evidence. One with no evidence under it is listed on the check sheet as left out; one you skip is listed as "not a requirement", which is wrong.
-- A line that asks for several things ("Python, SQL and Tableau") becomes one requirement per thing, each piece quoting only its own words. That way a door never shows a skill with nothing under it.
+- A line that asks for several things ("Python, SQL and Tableau") becomes one requirement per thing, each piece quoting only its own words, so a door never shows a skill with nothing under it. Split it only when at least one of those things has evidence. If none does, write the line once, whole: it is listed as left out either way.
 
-**Evidence.** For each requirement, up to the limit in `output-contract.md` (3), life-document lines only.
+**Evidence.** For each requirement, up to 3, life-document lines only.
 - It counts when the line shows the person doing the same kind of task or using the same skill, even in a different setting ("led a team of five volunteers" for "people management"). A line that only shares a word does not count.
 - Lean toward finding a fit. Never invent one.
 - Use whole sentences. Cut a line only when it runs over 25 words, and then to a piece that still makes sense alone.
 - The same life line may serve more than one requirement.
 
-**Fixed fields from the life document.** How many each field holds is in `output-contract.md`.
+**Fixed fields from the life document.** How many each field holds is in `map-format.md`.
 - Name: the one line or piece that gives it, spelled as written.
 - Contact: email, phone, city, link, only as written.
 - Roles: jobs, studies or positions, each followed by its dates piece if the document gives dates. Dates are copied as written ("2021–2023", "since spring"). Never work out or tidy a date.
@@ -39,13 +40,13 @@ A field the document doesn't give stays out of the map. Fill marks it "not in so
 
 ## Step 3: Fill (script)
 `node scripts/cv-fill.js runs/<run>`
-Copies every text from its numbered line into `game.html` and `check-sheet.html`, puts levels in the job post's order and evidence in line order, and prints what was left out and an estimated play time. If it stops, it says which map line is wrong: fix `map.txt` and run it again. Nothing is written until the whole map is right.
+Copies every text from its numbered line into `game.html` and `check-sheet.html`, puts levels in the job post's order and evidence in line order, prints what was left out and an estimated play time, then runs step 4 itself. If it stops, it says which map line is wrong: fix `map.txt` and run it again. Nothing is written until the whole map is right.
 
 **Play time: at most 5 minutes**, reading included. If the estimate is over, cut evidence pieces per door first (down to 1), then ask the person.
 
-## Step 4: Check (script)
-`node scripts/cv-check.js runs/<run>`
-Confirms every piece in the game is in the line it cites, character for character, that the game is the template with only its data filled in, and that the check sheet matches. Writes `check-result.txt`. **One FAIL and the game is not handed over:** fix `map.txt`, run Fill, run Check again.
+## Step 4: Check (script, run by Fill)
+On its own: `node scripts/cv-check.js runs/<run>`.
+Confirms every piece in the game is in the line it cites, character for character, that the game is the template with only its data filled in, and that the check sheet matches. Writes `check-result.txt`. **One FAIL and the game is not handed over:** fix `map.txt` and run Fill again.
 
 ## Hand over
 Give the person both files and say, in plain words:
@@ -59,10 +60,3 @@ Give the person both files and say, in plain words:
 - Add a date, number, score, skill, company or next step the input doesn't hold.
 - Edit the templates or scripts during a run.
 - Hand over a game that failed the check.
-
-## By hand: code execution off
-Unproven. If the templates drift when copied by hand, the README makes code execution required.
-1. **Number:** write `life-lines.txt` and `job-lines.txt` yourself. Follow step 1's splitting rules exactly, copy every character, one line per row as `L1`, a tab, then the text. If your splitting differs from the script's, the check in step 4 will fail, because the line numbers will point at different lines.
-2. **Map:** as above.
-3. **Fill:** build the data exactly as `output-contract.md` describes. Copy `game-template.html` whole and change only the text between the tags of the script with `id="cv-data"`. Copy `check-sheet-template.html` whole and change only the `cv-data` and `cv-sheet` blocks. Hand both over as files.
-4. **Check:** you can't run it. Tell the person to open `check-sheet.html`, paste the two original documents into section 5, load `game.html`, and press "Run the check". Only a PASS there counts.

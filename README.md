@@ -4,25 +4,31 @@
 
 Nothing in the game was written by the AI. Claude only picks line numbers; a script copies the words out of the numbered lines, and another script checks every piece of text in the game against the line it cites, character for character. One miss and the run fails. The same check sits inside the check sheet: paste in the two originals and watch each item turn green, or red if a word was changed.
 
-An entry for "The Translator" competition. Built to run in a claude.ai Project, in Claude Code, or anywhere Node.js runs.
+An entry for "The Translator" competition. Built to run as a claude.ai Skill or Project, in Claude Code, or anywhere Node.js runs.
 
 ## What to feed it
 - **A life document:** plain text or Markdown. Your life, skills, experience and personality in your own words. Sentences or bullets both work. Everything the game can say about you must be in here, spelled the way you want it shown.
-- **A job post:** the text of one job ad, pasted as is.
+- **A job post:** the text of one job ad, as is.
+
+Give both as files, not pasted text. Claude copies a file unchanged; pasted text it has to type back out, which costs more than the rest of the run and is the one step the check can't cover.
 
 ## What comes back
 - **`game.html`:** walk from door to door, one key or tap per door, nothing to solve, no way to lose. Aimed at under 5 minutes, reading included. Each door shows what the job asks and the lines from your life document that answer it. "Show the full CV" opens everything on one page. One file, nothing loaded from outside: it plays in any browser and as a claude.ai artifact.
 - **`check-sheet.html`:** for you (and the judges), not the employer. The seven fields with the line each piece came from, the requirements left out for lack of evidence, every input line and where it went, and the paste-in check.
-- **`check-result.txt`:** the script check, PASS or FAIL per piece (not made when code execution is off).
+- **`check-result.txt`:** the script check, PASS or FAIL per piece.
 
 ## How to use it
 
-**claude.ai Project**
-1. Add every file in this folder to the Project's files. The folders get flattened; that's fine, since every file name is unique.
-2. Switch on code execution in your Claude settings. On Free, Pro and Max it is off until you turn it on ([Claude help: create and edit files](https://support.claude.com/en/articles/12111783-create-and-edit-files-with-claude)).
-3. In a chat in the Project, paste or attach your life document and a job post and say "run it".
+Both claude.ai ways need code execution, which is on by default; check Settings > Capabilities ([Claude help: create and edit files](https://support.claude.com/en/articles/12111783-create-and-edit-files-with-claude)).
 
-Code execution off: Claude does the numbering and filling by hand and you run the check yourself in the check sheet's section 5. This path is unproven. If it drifts, turn code execution on.
+**claude.ai Skill** (lighter: the scripts and templates stay out of the chat, and run without being read)
+1. Zip this folder so `SKILL.md` sits inside a folder named `cv-game-translator`. From a git copy: `git archive --format=zip --prefix=cv-game-translator/ -o cv-game-translator.zip HEAD`, which leaves out `runs/` and anything else git ignores.
+2. Upload it at Customize > Skills: "+", then "Create skill", then "Upload a skill" ([Claude help: using skills](https://support.claude.com/en/articles/12512180-using-skills-in-claude)).
+3. In any chat, attach your life document and a job post and say "run the CV game translator".
+
+**claude.ai Project** (every file stays loaded in every chat of the Project, about 100 KB)
+1. Add every file in this folder to the Project's files. The folders get flattened; that's fine, since every file name is unique.
+2. In a chat in the Project, attach your life document and a job post and say "run it".
 
 **Claude Code:** open this folder and say "run it" with the two documents. Each run lands in `runs/<company>-<job-title>/`, which git ignores.
 
@@ -30,8 +36,7 @@ Code execution off: Claude does the numbering and filling by hand and you run th
 ```
 node scripts/cv-number.js runs/my-job      # needs life-document.txt and job-post.txt in runs/my-job
 # write runs/my-job/map.txt (see reference/map-format.md)
-node scripts/cv-fill.js runs/my-job
-node scripts/cv-check.js runs/my-job
+node scripts/cv-fill.js runs/my-job        # also runs the check (scripts/cv-check.js)
 ```
 
 ## Before you send the game
@@ -46,7 +51,8 @@ Reword you into "stronger" CV language, add the job's keywords, score your fit, 
 
 ```
 cv-game-translator/
-├── CLAUDE.md          ← where Claude starts: who runs it, where things live
+├── CLAUDE.md          ← where Claude starts in Claude Code: who runs it, where things live
+├── SKILL.md           ← where Claude starts when this folder is a claude.ai Skill
 ├── identity.md        ← what it converts, from what, to what; what it never does
 ├── rules.md           ← the four steps, and how a job post is mapped to a life document
 ├── examples.md        ← three real runs (placeholder until they exist)
@@ -55,11 +61,9 @@ cv-game-translator/
 │   ├── output-contract.md         ← the seven fields, their order, the data format, the check
 │   ├── map-format.md              ← the one file Claude writes: line numbers and exact pieces
 │   ├── game-template.html         ← the fixed game; each run fills only its data block
-│   └── check-sheet-template.html  ← the fixed check sheet, with the checker built in
+│   └── check-sheet-template.html  ← the fixed check sheet; Fill adds the checker each run
 └── scripts/
     ├── cv-number.js   ← step 1: split both inputs into numbered lines, no character changed
-    ├── cv-fill.js     ← step 3: copy each piece from its line into the two templates
+    ├── cv-fill.js     ← step 3: copy each piece from its line into the two templates, then run step 4
     └── cv-check.js    ← step 4: every piece in its line, character for character
 ```
-
-After changing `cv-number.js`, `cv-check.js` or `game-template.html`, run `node scripts/cv-fill.js --refresh-template` so the check sheet carries the new code.

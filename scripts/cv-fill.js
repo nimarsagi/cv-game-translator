@@ -11,15 +11,12 @@
  *     writes  game.html and check-sheet.html in the run folder,
  *             and lists every line that was not used
  *     Any problem in the map stops it before a file is written.
- *
- *   node cv-fill.js --refresh-template
- *     after cv-number.js, cv-check.js or game-template.html changed: copies the
- *     current checker code and the game template's fingerprint into
- *     check-sheet-template.html (the by-hand path uses that template as it is).
+ *     Then runs cv-check.js on the run folder and exits with its result.
  */
 'use strict';
 var fs = require('fs');
 var path = require('path');
+var childProcess = require('child_process');
 var C = require('./cv-check.js');
 
 function factoryFile(name) {
@@ -44,18 +41,9 @@ function inlineCode(sheetHtml, gameTemplate) {
   return C.writeBlock(out, 'cv-template-fingerprint', JSON.stringify(C.templateFingerprint(gameTemplate)));
 }
 
-// ---- maintenance mode ----
-if (process.argv[2] === '--refresh-template') {
-  var sheetTemplatePath = factoryFile('check-sheet-template.html');
-  var gameT = read(factoryFile('game-template.html'));
-  fs.writeFileSync(sheetTemplatePath, inlineCode(read(sheetTemplatePath), gameT));
-  console.log('Refreshed ' + sheetTemplatePath + ' (checker code and game-template fingerprint ' + C.templateFingerprint(gameT) + ').');
-  process.exit(0);
-}
-
 var dir = process.argv[2];
 if (!dir) {
-  console.error('Usage: node cv-fill.js <run-folder>   or   node cv-fill.js --refresh-template');
+  console.error('Usage: node cv-fill.js <run-folder>');
   process.exit(2);
 }
 function inRun(name) {
@@ -230,5 +218,9 @@ console.log([
   '  Life-document lines not used: ' + lifeUnused.length + ' of ' + docs.L.length + (lifeUnused.length ? ' (' + lifeUnused.join(', ') + ')' : ''),
   '  Job-post lines not used (not a requirement): ' + jobUnused.length + ' of ' + docs.J.length + (jobUnused.length ? ' (' + jobUnused.join(', ') + ')' : ''),
   '  Play time, estimated: about ' + minutes.toFixed(1) + ' minutes (' + words + ' words at 200 a minute, ' + stops + ' stops). Limit: 5.',
-  'Next: node cv-check.js ' + dir
+  ''
 ].join('\n'));
+
+// ---- step 4, Check ----
+var check = childProcess.spawnSync(process.execPath, [path.join(__dirname, 'cv-check.js'), dir], { stdio: 'inherit' });
+process.exit(check.status === null ? 1 : check.status);
