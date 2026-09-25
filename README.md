@@ -32,7 +32,7 @@ Both claude.ai ways need code execution, which is on by default; check Settings 
 1. Add every file in this folder to the Project's files. The folders get flattened; that's fine, since every file name is unique.
 2. In a chat in the Project, attach your life document and a job post and say "run it".
 
-**Claude Code:** put your life document at `my-story/life-document.md` and each job post in `my-story/job-posts/` (git ignores both), then type `/cv-game`. With several job posts, Claude asks which one; `/cv-game <part of a file name>` picks one straight away, and `/cv-game` followed by a pasted job post saves it there first. Saying "run it" with the two documents works too. Each run lands in `runs/<company>-<job-title>/`, which git ignores.
+**Claude Code:** put your life document at `my-story/life-document.md` and each job post in `my-story/job-posts/`, then type `/cv-game`. With several job posts, Claude asks which one; `/cv-game <part of a file name>` picks one straight away, and `/cv-game` followed by a pasted job post saves it there first. Saying "run it" with the two documents works too. Each run lands in `runs/<company>-<job-title>/`, which git ignores.
 
 **By hand, with Node.js:**
 ```
