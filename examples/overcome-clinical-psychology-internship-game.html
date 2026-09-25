@@ -1,0 +1,2359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CV game</title>
+<!-- game-template.html: the fixed game, a short flight through one person's life.
+     Every run fills only the JSON data block near the end; nothing else changes between runs,
+     and cv-check.js fails the run if it does. No word about the person is written here: each one
+     comes from that data block and is set with textContent. -->
+<style>
+  :root {
+    --bg: #f3f0e8; --ink: #1d2230; --muted: #5b6273; --card: #ffffff; --line: #d8d1c2;
+    --accent: #2f6f73; --accent-ink: #ffffff; --quote: #edf4f3; --frame: #1d1d2b;
+    --hud: rgba(9, 13, 34, .86); --hud-ink: #f5f7ff; --glow: #8feaff; --gold: #ffd23f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161b; --ink: #ebe7df; --muted: #a6abb8; --card: #1e222a; --line: #353b47;
+      --accent: #63b5ba; --accent-ink: #0c1013; --quote: #1a2a2b; --frame: #000000;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+  body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  button { font: inherit; cursor: pointer; }
+
+  /* ---------- the game screen ---------- */
+  .app { position: fixed; inset: 0; overflow: hidden; background: #5f86d8; color: var(--hud-ink); touch-action: manipulation; }
+  .stage, .stage canvas, .backdrop, .bars { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .stage canvas { display: block; }
+  .backdrop { display: none; background: linear-gradient(#2a73de, #bfe4ff 68%, #ffffff); }
+  .backdrop::after { content: ""; position: absolute; left: -10%; right: -10%; bottom: -6%; height: 34%;
+    background: radial-gradient(closest-side, rgba(255,255,255,.95), rgba(255,255,255,0)) 0 0 / 30% 70% repeat-x, rgba(255,255,255,.55);
+    border-radius: 50% 50% 0 0; }
+  body.plain .stage canvas { display: none; }
+  body.plain .backdrop { display: block; }
+  body[data-mood="past"] .backdrop { background: linear-gradient(#4d3f8f, #ffa565 68%, #ffe0c2); }
+  body[data-mood="future"] .backdrop { background: linear-gradient(#1a2256, #ff9fae 70%, #ffd6e0); }
+  .bars::before, .bars::after { content: ""; position: absolute; left: 0; right: 0; height: 8vh; background: #04050b;
+    transform: scaleY(0); transition: transform .35s ease; }
+  .bars::before { top: 0; transform-origin: top; }
+  .bars::after { bottom: 0; transform-origin: bottom; }
+  body.flying .bars::before, body.flying .bars::after { transform: scaleY(1); }
+
+  .top { position: absolute; top: 0; left: 0; right: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: max(10px, env(safe-area-inset-top)) 14px 10px; background: linear-gradient(rgba(4,6,18,.6), rgba(4,6,18,0)); }
+  .who { min-width: 0; font-weight: 800; font-style: italic; letter-spacing: .02em; text-shadow: 0 2px 0 rgba(0,0,0,.55); overflow-wrap: anywhere; }
+  .btn { min-height: 44px; padding: 8px 16px; border: 2px solid rgba(255,255,255,.92); border-radius: 3px; background: rgba(9,13,34,.72);
+    color: #fff; font-weight: 800; transform: skewX(-10deg); box-shadow: 0 3px 0 rgba(0,0,0,.35); white-space: nowrap; }
+  .btn > span { display: inline-block; transform: skewX(10deg); }
+  .btn:hover { background: rgba(30,40,90,.85); }
+  .btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  .btn.primary { background: var(--gold); color: #1a1530; }
+  .btn.primary:hover { background: #ffe07a; }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .controls { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 8px 14px max(10px, env(safe-area-inset-bottom)); background: linear-gradient(rgba(4,6,18,0), rgba(4,6,18,.62)); }
+  .controls .mid { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; text-align: center; }
+  .step { font: 800 .85rem/1.2 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; text-shadow: 0 1px 0 #000; }
+  .keys { font-size: .72rem; line-height: 1.2; color: rgba(255,255,255,.8); text-shadow: 0 1px 0 #000; }
+  @media (hover: none), (max-width: 560px) { .keys { display: none; } }
+
+  .chapter { position: absolute; left: 0; top: calc(66px + env(safe-area-inset-top)); z-index: 2; max-width: min(640px, 94%);
+    padding: 8px 34px 10px 16px; border-left: 5px solid var(--gold); pointer-events: none;
+    background: linear-gradient(90deg, rgba(9,13,34,.88), rgba(9,13,34,.6) 72%, rgba(9,13,34,0)); }
+  .chapter .part { font: 800 .72rem/1.2 system-ui, sans-serif; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+  .chapter .title { font-weight: 800; font-style: italic; font-size: clamp(1.1rem, 1.5vw + .8rem, 1.85rem); line-height: 1.15;
+    text-shadow: 0 2px 0 rgba(0,0,0,.6); overflow-wrap: anywhere; }
+  .chapter.long .title { font-size: clamp(.95rem, .6vw + .75rem, 1.25rem); }
+  .chapter.in { animation: slide .45s cubic-bezier(.2,.9,.3,1.2) both; }
+  .banner { position: absolute; left: 0; right: 0; top: 36%; z-index: 2; text-align: center; pointer-events: none; opacity: 0; }
+  .banner span { display: inline-block; padding: 10px 70px; font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: .12em;
+    font-size: clamp(2rem, 6.5vw, 4.4rem); line-height: 1.1; color: #fff; text-shadow: 0 0 20px var(--gold), 0 3px 0 #000;
+    background: linear-gradient(90deg, rgba(9,13,34,0), rgba(9,13,34,.82) 18%, rgba(9,13,34,.82) 82%, rgba(9,13,34,0)); }
+  .banner.show { animation: banner 2s ease-out both; }
+  .away { opacity: 0 !important; transition: opacity .2s; pointer-events: none !important; }
+
+  .layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+    padding: 118px 12px calc(78px + env(safe-area-inset-bottom)); pointer-events: none; }
+  .layer.mid { justify-content: center; padding-top: 70px; }
+  .layer.high { justify-content: flex-start; padding-top: 74px; }
+  .layer > * { pointer-events: auto; width: 100%; max-width: 880px; min-height: 0; }
+  .box { position: relative; background: var(--hud); border: 2px solid rgba(255,255,255,.94); border-radius: 5px; padding: 20px 24px 22px;
+    box-shadow: 0 0 0 3px rgba(9,13,34,.55), 0 12px 30px rgba(0,0,0,.35); }
+  .speaker { position: absolute; left: 18px; top: 0; max-width: calc(100% - 36px); transform: translateY(-58%) skewX(-12deg);
+    padding: 2px 16px; background: var(--gold); color: #1a1530; font-weight: 800; border: 2px solid #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .speaker > span { display: inline-block; transform: skewX(12deg); }
+  .line { margin: 4px 0 0; max-height: 32vh; overflow-y: auto; font-size: clamp(1.02rem, .9vw + .75rem, 1.32rem); line-height: 1.5; overflow-wrap: anywhere; }
+  .more { position: absolute; right: 14px; bottom: 7px; width: 0; height: 0; border: 7px solid transparent; border-top-color: var(--gold);
+    animation: blink 1.1s steps(2) infinite; }
+  .card { max-width: 780px; max-height: 100%; overflow-y: auto; padding: 16px 22px 18px; border: 2px solid #c6f7ff; border-radius: 5px;
+    background: linear-gradient(180deg, rgba(14,40,76,.94), rgba(8,15,38,.94)); overflow-wrap: anywhere;
+    box-shadow: 0 0 0 3px rgba(8,15,38,.55), 0 0 28px rgba(110,230,255,.75), inset 0 0 22px rgba(110,230,255,.22); }
+  .card.gold { border-color: #ffe9a0; box-shadow: 0 0 0 3px rgba(8,15,38,.55), 0 0 26px rgba(255,210,63,.6), inset 0 0 20px rgba(255,210,63,.18); }
+  .card.plainmsg { max-width: 520px; text-align: center; font-size: 1.1rem; }
+  .label { margin: 0 0 6px; font: 800 .76rem/1.2 system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--glow); }
+  .label.ev { margin-top: 14px; color: var(--gold); }
+  .asks { margin: 0; font-size: clamp(1.05rem, .7vw + .85rem, 1.25rem); font-weight: 700; line-height: 1.4; }
+  .card ul { margin: 0; padding-left: 1.2em; }
+  .card li { margin: 5px 0; line-height: 1.45; }
+  .card li::marker { color: var(--gold); }
+  .card ul.plain { list-style: none; padding: 0; }
+  .card .dates { display: block; color: #b9c4ea; font-size: .92rem; }
+  .name { margin: 0 0 4px; font-size: clamp(1.6rem, 3vw + 1rem, 2.6rem); font-style: italic; line-height: 1.1; }
+  .contact { margin: 0 0 12px; color: #d8e1ff; }
+  .contact span + span::before { content: "\00a0\00b7\00a0"; color: var(--gold); }
+  .card dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; }
+  .card dt { color: #b9c4ea; }
+  .card dd { margin: 0; font-weight: 700; }
+  .card.end { text-align: center; }
+  .end .job { margin: 2px 0; font-size: clamp(1.5rem, 2.6vw + 1rem, 2.5rem); font-weight: 900; font-style: italic; line-height: 1.15; }
+  .end .company { margin: 0 0 6px; font-size: 1.15rem; color: #d8e1ff; }
+  .end-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 14px; }
+  .cut-start::before, .cut-end::after { content: "\2026"; opacity: .75; }
+  .quoted::before { content: "\201C"; }
+  .quoted::after { content: "\201D"; }
+  .pop { animation: pop .38s cubic-bezier(.2,1.3,.4,1) both; }
+  .rise { animation: rise .3s ease-out both; }
+  @keyframes pop { from { opacity: 0; transform: scale(.72); filter: brightness(2.2); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @keyframes slide { from { opacity: 0; transform: translateX(-40px); } }
+  @keyframes banner { 0% { opacity: 0; transform: translateX(-14%) skewX(-18deg); } 14% { opacity: 1; transform: none; }
+    76% { opacity: 1; } 100% { opacity: 0; transform: translateX(10%); } }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pop, .rise, .chapter.in { animation: rise .01s both; }
+    .banner.show { animation: fade 2s both; }
+    @keyframes fade { 10%, 80% { opacity: 1; } 100% { opacity: 0; } }
+    .bars::before, .bars::after { transition: none; }
+  }
+  @media (max-width: 560px) {
+    .layer { padding-top: 104px; padding-left: 8px; padding-right: 8px; }
+    .box { padding: 18px 16px 18px; }
+    .card { padding: 14px 16px 16px; }
+    .btn { padding: 8px 12px; }
+    .chapter { top: calc(58px + env(safe-area-inset-top)); }
+  }
+  @media (max-height: 480px) {
+    .layer { padding-top: 64px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+    .chapter { top: 52px; padding-top: 4px; padding-bottom: 4px; }
+    .line { max-height: 24vh; }
+    .banner { top: 30%; }
+  }
+
+  /* ---------- the full CV, one plain page ---------- */
+  .full { position: fixed; inset: 0; z-index: 10; overflow-y: auto; padding: 16px; background: rgba(10, 12, 18, .6); color: var(--ink); }
+  .full-inner { max-width: 760px; margin: 0 auto; padding: 18px 20px 24px; background: var(--card); border: 2px solid var(--frame); border-radius: 8px; }
+  .full-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .full-head h2 { margin: 0; font: 700 1rem ui-monospace, Menlo, Consolas, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .full-head button { padding: 8px 14px; border-radius: 6px; border: 2px solid var(--frame); background: var(--card); color: var(--ink); }
+  .full-head button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .full h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 6px; overflow-wrap: anywhere; }
+  .full h3 { font-size: 1.1rem; margin: 22px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .full h4 { font-size: 1rem; margin: 14px 0 4px; overflow-wrap: anywhere; }
+  .full p { margin: 4px 0; overflow-wrap: anywhere; }
+  .full .contact { color: var(--muted); }
+  .full .contact span + span::before { content: "\00a0\00b7\00a0"; color: var(--muted); }
+  .full .flabel { font-weight: 700; font-size: .88rem; color: var(--muted); margin: 8px 0 2px; }
+  .full .asks { margin: 0; padding: 8px 12px; background: var(--quote); border-left: 4px solid var(--accent); border-radius: 4px; }
+  .full .req { margin: 8px 0 12px 12px; }
+  .full ul { margin: 0; padding-left: 1.2em; }
+  .full li { margin: 3px 0; overflow-wrap: anywhere; }
+  .full ul.plain { list-style: none; padding: 0; }
+  .full .dates { display: block; color: var(--muted); font-size: .92rem; }
+  .full dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+  .full dt { color: var(--muted); }
+  .full dd { margin: 0; overflow-wrap: anywhere; }
+  @media print {
+    html, body { height: auto; overflow: visible; background: #fff; color: #000; }
+    .app { display: none !important; }
+    .full, .full[hidden] { display: block !important; position: static; overflow: visible; padding: 0; background: none; }
+    .full-inner { max-width: none; padding: 0; border: 0; background: #fff; color: #000; }
+    .full-head button { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="stage" aria-hidden="true"><canvas id="world"></canvas><div class="backdrop"></div><div class="bars"></div></div>
+  <div class="chapter" id="chapter" hidden aria-live="polite"><div class="part" id="ch-part"></div><div class="title" id="ch-title"></div></div>
+  <div class="banner" id="banner" aria-hidden="true"><span id="banner-text"></span></div>
+  <div class="layer" id="layer" aria-live="polite"></div>
+  <header class="top">
+    <div class="who" id="who"></div>
+    <button class="btn" id="btn-full" type="button"><span>Show the full CV</span></button>
+  </header>
+  <nav class="controls" aria-label="Game controls">
+    <button class="btn" id="btn-back" type="button"><span>&larr; Back</span></button>
+    <div class="mid"><span class="step" id="step"></span><span class="keys">&rarr; Space Enter: Next &middot; &larr;: Back &middot; Esc: Close</span></div>
+    <button class="btn primary" id="btn-next" type="button"><span id="next-text">Next &rarr;</span></button>
+  </nav>
+</div>
+
+<div class="full" id="full" hidden role="dialog" aria-modal="true" aria-labelledby="full-title">
+  <div class="full-inner">
+    <div class="full-head">
+      <h2 id="full-title">Full CV</h2>
+      <button id="btn-close" type="button">Close</button>
+    </div>
+    <div id="full-body"></div>
+  </div>
+</div>
+
+<script type="application/json" id="cv-data">{
+ "format": "cv-game-data/2",
+ "fields": {
+  "name": [
+   {
+    "ref": "L1",
+    "text": "Nika Marsagischvili",
+    "cutStart": false,
+    "cutEnd": false
+   }
+  ],
+  "contact": [],
+  "jobTitle": [
+   {
+    "ref": "J1",
+    "text": "Clinical Psychology Internship",
+    "cutStart": false,
+    "cutEnd": true
+   }
+  ],
+  "company": [
+   {
+    "ref": "J1",
+    "text": "Overcome",
+    "cutStart": true,
+    "cutEnd": false
+   }
+  ],
+  "chapters": [
+   {
+    "title": {
+     "ref": "L10",
+     "text": "The Ordinary World",
+     "cutStart": true,
+     "cutEnd": false
+    },
+    "part": "past",
+    "scene": "classroom",
+    "story": [
+     {
+      "ref": "L15",
+      "text": "I carried an early calling: to become a doctor, like generations of my family before me.",
+      "cutStart": false,
+      "cutEnd": false
+     },
+     {
+      "ref": "L17",
+      "text": "Somewhere along the way I realised the dream wasn't mine.",
+      "cutStart": false,
+      "cutEnd": false
+     },
+     {
+      "ref": "L19",
+      "text": "I kept what was truly mine, the drive to help people, and let go of the inherited role.",
+      "cutStart": false,
+      "cutEnd": false
+     }
+    ],
+    "requirements": [
+     {
+      "asks": {
+       "ref": "J33",
+       "text": "demonstrate charisma",
+       "cutStart": true,
+       "cutEnd": true
+      },
+      "evidence": [
+       {
+        "ref": "L11",
+        "text": "I began as an enthusiastic, optimistic, curious kid, the one who drew attention in a room and made friends easily.",
+        "cutStart": false,
+        "cutEnd": false
+       }
+      ]
+     },
+     {
+      "asks": {
+       "ref": "J33",
+       "text": "empathy",
+       "cutStart": true,
+       "cutEnd": false
+      },
+      "evidence": [
+       {
+        "ref": "L12",
+        "text": "I also made a point of getting to know the classmates others left out or called \"weird\".",
+        "cutStart": false,
+        "cutEnd": false
+       },
+       {
+        "ref": "L13",
+        "text": "Understanding them made me slower to judge anyone.",
+        "cutStart": false,
+        "cutEnd": false
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "title": {
+     "ref": "L22",
+     "text": "The Artist's Detour",
+     "cutStart": true,
+     "cutEnd": false
+    },
+    "part": "past",
+    "scene": "film-set",
+    "story": [
+     {
+      "ref": "L27",
+      "text": "I loved stories, but not the daily grind of writing, and not the slow climb through low-budget productions.",
+      "cutStart": false,
+      "cutEnd": false
+     }
+    ],
+    "requirements": []
+   },
+   {
+    "title": {
+     "ref": "L31",
+     "text": "Finding the Real Call",
+     "cutStart": true,
+     "cutEnd": false
+    },
+    "part": "past",
+    "scene": "library",
+    "story": [
+     {
+      "ref": "L32",
+      "text": "Looking back, I saw what had actually held me in film.",
+      "cutStart": false,
+      "cutEnd": false
+     },
+     {
+      "ref": "L33",
+      "text": "It wasn't the writing or the sets; it was the people inside the stories: how minds work, how people struggle, what drives them.",
+      "cutStart": false,
+      "cutEnd": false
+     },
+     {
+      "ref": "L36",
+      "text": "In 2023 I enrolled in psychology at the University of Amsterdam.",
+      "cutStart": false,
+      "cutEnd": false
+     }
+    ],
+    "requirements": [
+     {
+      "asks": {
+       "ref": "J28",
+       "text": "Strong interest in coaching, psychotherapy, counselling, or clinical psychology.",
+       "cutStart": false,
+       "cutEnd": false
+      },
+      "evidence": [
+       {
+        "ref": "L34",
+        "text": "I spent hours watching interviews with people facing mental challenges, trying to understand them from the inside.",
+        "cutStart": false,
+        "cutEnd": false
+       },
+       {
+        "ref": "L35",
+        "text": "Storytelling had been the vehicle; the human psyche was the destination.",
+        "cutStart": false,
+        "cutEnd": false
+       },
+       {
+        "ref": "L122",
+        "text": "Track: clinical psychology, plus methods electives.",
+        "cutStart": false,
+        "cutEnd": false
+       }
+      ]
+     },
+     {
+      "asks": {
+       "ref": "J29",
+       "text": "Fluency in English.",
+       "cutStart": false,
+       "cutEnd": false
+      },
+      "evidence": [
+       {
+        "ref": "L2",
+        "text": "Languages: Dutch (fluent), English (fluent), Georgian (basic)",
+        "cutStart": false,
+        "cutEnd": false
+       }
+      ]
+     },
+     {
+      "asks": {
+       "ref": "J33",
+       "text": "Able to learn quickly",
+       "cutStart": false,
+       "cutEnd": true
+      },
+      "evidence": [
+       {
+        "ref": "L102",
+        "text": "I rotate between daycare centres, adapting to each one's culture and rules while keeping order in the group.",
+        "cutStart": false,
+        "cutEnd": false
+       },
+       {
+        "ref": "L105",
+        "text": "I adapted quickly to new locations and roles.",
+        "cutStart": false,
+        "cutEnd": false
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "title": {
+     "ref": "L84",
+     "text": "Return with the Elixir",
+     "cutStart": true,
+     "cutEnd": false
+    },
+    "part": "future",
+    "scene": "sunrise-city",
+    "story": [
+     {
+      "ref": "L90",
+      "text": "The boy who once chased a doctor's title found his own way to help people.",
+      "cutStart": false,
+      "cutEnd": false
+     }
+    ],
+    "requirements": []
+   }
+  ],
+  "roles": [
+   {
+    "role": {
+     "ref": "L92",
+     "text": "Co-founder (in formation), Milias, AI workflow consultancy",
+     "cutStart": false,
+     "cutEnd": true
+    },
+    "dates": [
+     {
+      "ref": "L92",
+      "text": "2026–present",
+      "cutStart": true,
+      "cutEnd": false
+     }
+    ]
+   },
+   {
+    "role": {
+     "ref": "L97",
+     "text": "Pilot engagement (pro bono), fruit and vegetable export company",
+     "cutStart": false,
+     "cutEnd": true
+    },
+    "dates": [
+     {
+      "ref": "L97",
+      "text": "2026",
+      "cutStart": true,
+      "cutEnd": false
+     }
+    ]
+   },
+   {
+    "role": {
+     "ref": "L101",
+     "text": "Substitute childcare worker, various daycare centres",
+     "cutStart": false,
+     "cutEnd": true
+    },
+    "dates": [
+     {
+      "ref": "L101",
+      "text": "April 2025–present",
+      "cutStart": true,
+      "cutEnd": false
+     }
+    ]
+   },
+   {
+    "role": {
+     "ref": "L103",
+     "text": "Freelance part-time work in sales, catering and as a cashier, via YoungOnes",
+     "cutStart": false,
+     "cutEnd": true
+    },
+    "dates": [
+     {
+      "ref": "L103",
+      "text": "August 2022–2024",
+      "cutStart": true,
+      "cutEnd": false
+     }
+    ]
+   },
+   {
+    "role": {
+     "ref": "L106",
+     "text": "Independent trader and investor",
+     "cutStart": false,
+     "cutEnd": true
+    },
+    "dates": [
+     {
+      "ref": "L106",
+      "text": "June 2020–present, with a break before resuming in 2022",
+      "cutStart": true,
+      "cutEnd": false
+     }
+    ]
+   },
+   {
+    "role": {
+     "ref": "L119",
+     "text": "BSc Psychology, University of Amsterdam",
+     "cutStart": false,
+     "cutEnd": true
+    },
+    "dates": [
+     {
+      "ref": "L119",
+      "text": "September 2023 – August 2026",
+      "cutStart": true,
+      "cutEnd": false
+     }
+    ]
+   },
+   {
+    "role": {
+     "ref": "L130",
+     "text": "Secondary school, Amadeus Lyceum, Utrecht",
+     "cutStart": false,
+     "cutEnd": true
+    },
+    "dates": [
+     {
+      "ref": "L130",
+      "text": "2015–2022",
+      "cutStart": true,
+      "cutEnd": false
+     }
+    ]
+   }
+  ],
+  "traits": [
+   {
+    "ref": "L172",
+    "text": "Self-aware: I recognised that medicine wasn't my own goal, and I owned my film setback.",
+    "cutStart": false,
+    "cutEnd": false
+   },
+   {
+    "ref": "L173",
+    "text": "I reflect on my own behaviour and always seek to improve myself.",
+    "cutStart": false,
+    "cutEnd": false
+   },
+   {
+    "ref": "L174",
+    "text": "Non-judgemental: I sought out the classmates others left out or called \"weird\".",
+    "cutStart": false,
+    "cutEnd": false
+   },
+   {
+    "ref": "L175",
+    "text": "Persistent and hard-working: I went from VMBO to VWO, finished my BSc in nominal time, and am postponing reward to build Milias.",
+    "cutStart": false,
+    "cutEnd": false
+   },
+   {
+    "ref": "L177",
+    "text": "Extroverted, and I connect people: I shared my prompts with my cohort, and met my co-founder through a casual conversation.",
+    "cutStart": false,
+    "cutEnd": false
+   }
+  ]
+ }
+}</script>
+<script>
+(function () {
+  'use strict';
+
+  // ======================= the data =======================
+  var data = null;
+  try { data = JSON.parse(document.getElementById('cv-data').textContent); } catch (e) { data = null; }
+  var F = data && data.format === 'cv-game-data/2' && data.fields && typeof data.fields === 'object' ? data.fields : null;
+  var PART_WORDS = { past: 'The past', present: 'The present', future: 'The future' };
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function arr(o, k) { return o && Array.isArray(o[k]) ? o[k] : []; }
+  function isPiece(p) { return !!p && typeof p.text === 'string' && p.text !== ''; }
+  function pieces(o, k) { return arr(o, k).filter(isPiece); }
+  var name = pieces(F, 'name'), contact = pieces(F, 'contact'), jobTitle = pieces(F, 'jobTitle'), company = pieces(F, 'company');
+  var chapters = arr(F, 'chapters').filter(function (c) { return c && typeof c === 'object'; }).map(function (c) {
+    return {
+      title: isPiece(c.title) ? c.title : null,
+      part: typeof c.part === 'string' && has(PART_WORDS, c.part) ? c.part : '',
+      scene: typeof c.scene === 'string' ? c.scene : '',
+      story: pieces(c, 'story'),
+      reqs: arr(c, 'requirements').filter(function (r) { return r && isPiece(r.asks); })
+        .map(function (r) { return { asks: r.asks, evidence: pieces(r, 'evidence') }; })
+    };
+  });
+  var roles = arr(F, 'roles').filter(function (r) { return r && isPiece(r.role); })
+    .map(function (r) { return { role: r.role, dates: pieces(r, 'dates') }; });
+  var traits = pieces(F, 'traits');
+
+  // ---------- text: every word below comes from the data block, copied by cv-fill.js ----------
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  // A piece of a line. Cuts show as an ellipsis on story lines, requirements and evidence.
+  function piece(item, tag, cls, showCuts) {
+    var e = el(tag || 'span', cls, item.text);
+    if (showCuts && item.cutStart) e.classList.add('cut-start');
+    if (showCuts && item.cutEnd) e.classList.add('cut-end');
+    return e;
+  }
+  function add(parent) { for (var i = 1; i < arguments.length; i++) if (arguments[i]) parent.appendChild(arguments[i]); return parent; }
+  function jobList() {
+    if (!jobTitle.length && !company.length) return null;
+    var dl = el('dl');
+    if (jobTitle.length) add(dl, el('dt', null, 'Job title'), add(el('dd'), piece(jobTitle[0])));
+    if (company.length) add(dl, el('dt', null, 'Company'), add(el('dd'), piece(company[0])));
+    return dl;
+  }
+  function contactLine(cls) {
+    var p = el('p', cls);
+    contact.forEach(function (c) { add(p, piece(c)); });
+    return p;
+  }
+  function evidenceList(r) {
+    var ul = el('ul');
+    r.evidence.forEach(function (ev) { add(ul, piece(ev, 'li', null, true)); });
+    return ul;
+  }
+  function rolesList() {
+    var ul = el('ul', 'plain');
+    roles.forEach(function (r) {
+      var li = add(el('li'), piece(r.role, 'span', 'role'));
+      if (r.dates.length) add(li, piece(r.dates[0], 'span', 'dates'));
+      add(ul, li);
+    });
+    return ul;
+  }
+  function traitsList() {
+    var ul = el('ul');
+    traits.forEach(function (t) { add(ul, piece(t, 'li', 'quoted')); });
+    return ul;
+  }
+
+  // ---------- the steps: start, each chapter (its story lines, then its requirements), roles, traits, end ----------
+  // "at" is where a step plays: 'start', a chapter index, 'roles', 'traits' or 'end'. A new "at" means a flight.
+  var steps = [];
+  if (!F) steps.push({ kind: 'none', at: 'start' });
+  else {
+    steps.push({ kind: 'start', at: 'start' });
+    chapters.forEach(function (c, ci) {
+      for (var i = 0; i < Math.max(1, c.story.length); i++) steps.push({ kind: 'story', at: ci, i: i, line: c.story[i] || null });
+      c.reqs.forEach(function (r, ri) { steps.push({ kind: 'req', at: ci, i: ri, req: r }); });
+    });
+    if (roles.length) steps.push({ kind: 'roles', at: 'roles' });
+    if (traits.length) steps.push({ kind: 'traits', at: 'traits' });
+    steps.push({ kind: 'end', at: 'end' });
+  }
+  function partAt(at) { return typeof at === 'number' ? chapters[at].part : ''; }
+
+  var layer = $('layer'), chapterCard = $('chapter'), banner = $('banner');
+  function renderHud(i) {
+    var s = steps[i], box = null;
+    layer.textContent = '';
+    layer.className = 'layer' + (s.kind === 'start' ? ' high' : s.kind === 'end' || s.kind === 'none' ? ' mid' : '');
+    if (s.kind === 'none') {
+      box = add(el('div', 'card plainmsg'), el('p', null, 'This file holds no CV data yet.'));
+    } else if (s.kind === 'start') {
+      box = el('div', 'card');
+      if (name.length) add(box, piece(name[0], 'h1', 'name'));
+      if (contact.length) add(box, contactLine('contact'));
+      var job = jobList();
+      if (job) add(box, el('div', 'label', 'The job'), job);
+      if (!box.firstChild) box = null;
+    } else if (s.kind === 'story') {
+      if (s.line) {
+        box = el('div', 'box');
+        if (name.length) add(box, add(el('div', 'speaker'), piece(name[0], 'span')));
+        add(box, piece(s.line, 'p', 'line', true), el('i', 'more'));
+      }
+    } else if (s.kind === 'req') {
+      box = add(el('div', 'card'), el('div', 'label', 'The job asks:'), piece(s.req.asks, 'p', 'asks', true));
+      if (s.req.evidence.length) add(box, el('div', 'label ev', 'From the life document:'), evidenceList(s.req));
+    } else if (s.kind === 'roles') {
+      box = add(el('div', 'card gold'), el('div', 'label', 'Roles'), rolesList());
+    } else if (s.kind === 'traits') {
+      box = add(el('div', 'card gold'), el('div', 'label', 'Traits'), traitsList());
+    } else {
+      box = el('div', 'card gold end');
+      if (jobTitle.length || company.length) add(box, el('div', 'label', 'The job'));
+      if (jobTitle.length) add(box, piece(jobTitle[0], 'p', 'job'));
+      if (company.length) add(box, piece(company[0], 'p', 'company'));
+      var full = add(el('button', 'btn primary'), el('span', null, 'Show the full CV'));
+      var again = add(el('button', 'btn'), el('span', null, 'Play again'));
+      full.type = again.type = 'button';
+      full.addEventListener('click', openFull);
+      again.addEventListener('click', function () { go(0); });
+      add(box, add(el('div', 'end-actions'), full, again));
+    }
+    if (box) add(layer, box).classList.add(s.kind === 'story' ? 'rise' : 'pop');
+  }
+
+  function buildFull() {
+    var body = $('full-body');
+    body.textContent = '';
+    if (!F) { add(body, el('p', null, 'This file holds no CV data yet.')); return; }
+    if (name.length) add(body, piece(name[0], 'h1'));
+    if (contact.length) add(body, contactLine('contact'));
+    var job = jobList();
+    if (job) add(body, el('h3', null, 'The job'), job);
+    var lastPart = null;
+    chapters.forEach(function (c) {
+      if (c.part !== lastPart && c.part) add(body, el('h3', null, PART_WORDS[c.part]));
+      lastPart = c.part;
+      var sec = el('section');
+      if (c.title) add(sec, piece(c.title, 'h4'));
+      c.story.forEach(function (p) { add(sec, piece(p, 'p', null, true)); });
+      c.reqs.forEach(function (r) {
+        add(sec, add(el('div', 'req'), el('div', 'flabel', 'The job asks:'), piece(r.asks, 'p', 'asks', true),
+          r.evidence.length ? el('div', 'flabel', 'From the life document:') : null, r.evidence.length ? evidenceList(r) : null));
+      });
+      add(body, sec);
+    });
+    if (roles.length) add(body, el('h3', null, 'Roles'), rolesList());
+    if (traits.length) add(body, el('h3', null, 'Traits'), traitsList());
+  }
+
+  if (name.length) {
+    $('who').textContent = name[0].text;
+    document.title = name[0].text + ' · CV game';
+  }
+
+  // ======================= math =======================
+  var DEG = Math.PI / 180;
+  function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function smooth(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+  function damp(k, dt) { return 1 - Math.exp(-k * dt); }
+  function vadd(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+  function vsub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+  function vscale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
+  function vlerp(a, b, t) { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
+  function vdot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function vcross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+  function vlen(a) { return Math.sqrt(vdot(a, a)); }
+  function vnorm(a) { var l = vlen(a); return l > 1e-9 ? vscale(a, 1 / l) : [0, 1, 0]; }
+  function angLerp(a, b, t) { var d = ((b - a) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; return a + d * t; }
+  function mat() { var m = new Float32Array(16); m[0] = m[5] = m[10] = m[15] = 1; return m; }
+  var TMP = new Float32Array(16);
+  function mmul(o, a, b) {
+    for (var c = 0; c < 4; c++) for (var r = 0; r < 4; r++)
+      TMP[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    o.set(TMP);
+    return o;
+  }
+  // o = translate(x,y,z) * rotY * rotX * rotZ * scale(sx,sy,sz); angles in radians
+  function mcompose(o, x, y, z, rx, ry, rz, sx, sy, sz) {
+    var cx = Math.cos(rx), sxn = Math.sin(rx), cy = Math.cos(ry), syn = Math.sin(ry), cz = Math.cos(rz), szn = Math.sin(rz);
+    o[0] = (cz * cy + szn * syn * sxn) * sx; o[1] = szn * cx * sx; o[2] = (-cz * syn + szn * cy * sxn) * sx; o[3] = 0;
+    o[4] = (-szn * cy + cz * syn * sxn) * sy; o[5] = cz * cx * sy; o[6] = (szn * syn + cz * cy * sxn) * sy; o[7] = 0;
+    o[8] = syn * cx * sz; o[9] = -sxn * sz; o[10] = cy * cx * sz; o[11] = 0;
+    o[12] = x; o[13] = y; o[14] = z; o[15] = 1;
+    return o;
+  }
+  function mpoint(m, x, y, z) {
+    return [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+  }
+  function mdir(m, x, y, z) { return [m[0] * x + m[4] * y + m[8] * z, m[1] * x + m[5] * y + m[9] * z, m[2] * x + m[6] * y + m[10] * z]; }
+  // shift moves the picture up (a share of the half-height), so the subject clears the dialogue box
+  function persp(o, fovy, asp, n, f, shift) {
+    var t = 1 / Math.tan(fovy / 2);
+    for (var i = 0; i < 16; i++) o[i] = 0;
+    o[0] = t / asp; o[5] = t; o[9] = -shift; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f);
+    return o;
+  }
+  function lookAt(o, e, a, up) {
+    var z = vnorm(vsub(e, a)), x = vnorm(vcross(up, z)), y = vcross(z, x);
+    o[0] = x[0]; o[1] = y[0]; o[2] = z[0]; o[3] = 0;
+    o[4] = x[1]; o[5] = y[1]; o[6] = z[1]; o[7] = 0;
+    o[8] = x[2]; o[9] = y[2]; o[10] = z[2]; o[11] = 0;
+    o[12] = -vdot(x, e); o[13] = -vdot(y, e); o[14] = -vdot(z, e); o[15] = 1;
+    return o;
+  }
+  function rng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(a ^ (a >>> 15), a | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return h >>> 0;
+  }
+  function rgb(c) { if (typeof c !== 'number') c = 0xff00ff; return [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255]; }
+  function mixHex(a, b, t) {
+    var A = rgb(a), B = rgb(b);
+    return (Math.round(lerp(A[0], B[0], t) * 255) << 16) | (Math.round(lerp(A[1], B[1], t) * 255) << 8) | Math.round(lerp(A[2], B[2], t) * 255);
+  }
+
+  // ======================= shapes =======================
+  // Unit shapes as flat lists of triangle corners (P) and normals (N), counter-clockwise seen from outside.
+  var GEO = {};
+  function geoBox() {
+    if (GEO.box) return GEO.box;
+    var P = [], N = [];
+    [[1, 0, 0, 0, 0, -1, 0, 1, 0], [-1, 0, 0, 0, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 0, 0, 0, -1],
+      [0, -1, 0, 1, 0, 0, 0, 0, 1], [0, 0, 1, 1, 0, 0, 0, 1, 0], [0, 0, -1, -1, 0, 0, 0, 1, 0]].forEach(function (f) {
+      var c = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(function (q) {
+        return [(f[0] + q[0] * f[3] + q[1] * f[6]) / 2, (f[1] + q[0] * f[4] + q[1] * f[7]) / 2, (f[2] + q[0] * f[5] + q[1] * f[8]) / 2];
+      });
+      [0, 1, 2, 0, 2, 3].forEach(function (i) { P.push(c[i][0], c[i][1], c[i][2]); N.push(f[0], f[1], f[2]); });
+    });
+    return (GEO.box = { P: P, N: N });
+  }
+  // A cylinder from y=0 to y=1, radius 1 at the bottom and r2 at the top.
+  function geoCyl(seg, r2, flat) {
+    var key = 'c' + seg + '/' + r2 + '/' + !!flat;
+    if (GEO[key]) return GEO[key];
+    var P = [], N = [];
+    function put(p, n) { P.push(p[0], p[1], p[2]); N.push(n[0], n[1], n[2]); }
+    for (var i = 0; i < seg; i++) {
+      var a0 = i / seg * 2 * Math.PI, a1 = (i + 1) / seg * 2 * Math.PI, am = (a0 + a1) / 2;
+      var b0 = [Math.cos(a0), 0, Math.sin(a0)], b1 = [Math.cos(a1), 0, Math.sin(a1)];
+      var t0 = [r2 * b0[0], 1, r2 * b0[2]], t1 = [r2 * b1[0], 1, r2 * b1[2]];
+      var n0 = vnorm([Math.cos(a0), 1 - r2, Math.sin(a0)]), n1 = vnorm([Math.cos(a1), 1 - r2, Math.sin(a1)]);
+      if (flat) n0 = n1 = vnorm([Math.cos(am), 1 - r2, Math.sin(am)]);
+      put(b0, n0); put(t0, n0); put(t1, n1);
+      if (r2 > 0) { put(b0, n0); put(t1, n1); put(b1, n1); put([0, 1, 0], [0, 1, 0]); put(t1, [0, 1, 0]); put(t0, [0, 1, 0]); }
+      else { put(b0, n0); put(t1, n1); put(b1, n1); }
+      put([0, 0, 0], [0, -1, 0]); put(b0, [0, -1, 0]); put(b1, [0, -1, 0]);
+    }
+    return (GEO[key] = { P: P, N: N });
+  }
+  // A sphere of radius 1; jit > 0 makes a lumpy rock (not cached).
+  function geoSphere(seg, rings, flat, jit, rand) {
+    var key = 's' + seg + '/' + rings + '/' + !!flat;
+    if (!jit && GEO[key]) return GEO[key];
+    var J = [], j, i;
+    for (j = 0; j <= rings; j++) {
+      J.push([]);
+      for (i = 0; i < seg; i++) J[j].push(jit ? 1 + (rand() - 0.5) * jit : 1);
+      if (j === 0 || j === rings) for (i = 1; i < seg; i++) J[j][i] = J[j][0];
+    }
+    function pt(j, i) {
+      var th = j / rings * Math.PI, ph = i / seg * 2 * Math.PI, r = J[j][i % seg];
+      return [Math.sin(th) * Math.cos(ph) * r, Math.cos(th) * r, Math.sin(th) * Math.sin(ph) * r];
+    }
+    var P = [], N = [];
+    function tri(a, b, c) {
+      var fn = flat ? vnorm(vcross(vsub(b, a), vsub(c, a))) : null;
+      [a, b, c].forEach(function (p) { var n = fn || vnorm(p); P.push(p[0], p[1], p[2]); N.push(n[0], n[1], n[2]); });
+    }
+    for (j = 0; j < rings; j++) for (i = 0; i < seg; i++) {
+      var p00 = pt(j, i), p01 = pt(j, i + 1), p10 = pt(j + 1, i), p11 = pt(j + 1, i + 1);
+      if (j > 0) tri(p10, p00, p01);
+      if (j < rings - 1) tri(p10, p01, p11);
+    }
+    var g = { P: P, N: N };
+    if (!jit) GEO[key] = g;
+    return g;
+  }
+  // A roof shape: base w x d at y=0, ridge along z at height 1.
+  function geoWedge() {
+    if (GEO.wedge) return GEO.wedge;
+    var P = [], N = [], h = 0.5;
+    function quad(a, b, c, d) {
+      var n = vnorm(vcross(vsub(b, a), vsub(c, a)));
+      [a, b, c, a, c, d].forEach(function (p) { P.push(p[0], p[1], p[2]); N.push(n[0], n[1], n[2]); });
+    }
+    function tri(a, b, c) { var n = vnorm(vcross(vsub(b, a), vsub(c, a))); [a, b, c].forEach(function (p) { P.push(p[0], p[1], p[2]); N.push(n[0], n[1], n[2]); }); }
+    tri([-h, 0, h], [h, 0, h], [0, 1, h]);
+    tri([h, 0, -h], [-h, 0, -h], [0, 1, -h]);
+    quad([h, 0, h], [h, 0, -h], [0, 1, -h], [0, 1, h]);
+    quad([-h, 0, -h], [-h, 0, h], [0, 1, h], [0, 1, -h]);
+    quad([-h, 0, -h], [h, 0, -h], [h, 0, h], [-h, 0, h]);
+    return (GEO.wedge = { P: P, N: N });
+  }
+  function primM(x, y, z, o, sx, sy, sz) {
+    return mcompose(mat(), x, y, z, (o.rx || 0) * DEG, (o.ry || 0) * DEG, (o.rz || 0) * DEG, sx, sy, sz);
+  }
+
+  // ======================= the builder (the API scenes are written in; see scene-guide.md) =======================
+  // Island coordinates: the island top is the ground at y=0, +z faces the camera, 1 unit is a metre (the characters
+  // are 1.8 tall). Angles are in degrees. Colours are 0xRRGGBB.
+  // Options (o): rx, ry, rz turn the shape; e: 0..1 glow (1 = unlit, full colour); o: outline width (0 = none);
+  // seg/rings: roundness; flat: faceted; sx/sy/sz: stretch (ball, rock), sz (cyl); r2: top radius (cyl, link).
+  function Builder(seed) {
+    this.v = []; this.halos = []; this.anims = [];
+    this.m = mat(); this.st = [];
+    this.r = rng(seed || 1);
+    this.out = 1;
+    this.info = { land: [0, 0, 2, 0], eye: null, at: null, top: 0x7cc46a, rock: 0x9a7b5f, radius: 12, sky: null, skyAmt: 0 };
+  }
+  var BP = Builder.prototype;
+  BP.rand = function () { return this.r(); };
+  BP.mix = mixHex;
+  BP.push = function (x, y, z, ry, s) {
+    this.st.push(new Float32Array(this.m));
+    mmul(this.m, this.m, mcompose(mat(), x || 0, y || 0, z || 0, 0, (ry || 0) * DEG, 0, s || 1, s || 1, s || 1));
+    return this;
+  };
+  BP.pop = function () { this.m = this.st.pop() || mat(); return this; };
+  BP.prim = function (P, N, col, o, pm) {
+    var m = mmul(mat(), this.m, pm);
+    var a0 = [m[0], m[1], m[2]], a1 = [m[4], m[5], m[6]], a2 = [m[8], m[9], m[10]];
+    var c0 = vcross(a1, a2), c1 = vcross(a2, a0), c2 = vcross(a0, a1), det = vdot(a0, c0), sg = det < 0 ? -1 : 1;
+    var c = rgb(col), e = o.floral ? 2 : clamp(o.e || 0, 0, 1), ow = o.o != null ? o.o : this.out;
+    var n = P.length / 3, W = [], NN = [], K = [], acc = {}, i, j;
+    for (i = 0; i < n; i++) {
+      var x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2], nx = N[i * 3], ny = N[i * 3 + 1], nz = N[i * 3 + 2];
+      var p = [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+      var q = vnorm([(c0[0] * nx + c1[0] * ny + c2[0] * nz) * sg, (c0[1] * nx + c1[1] * ny + c2[1] * nz) * sg, (c0[2] * nx + c1[2] * ny + c2[2] * nz) * sg]);
+      W.push(p); NN.push(q);
+      if (ow > 0) {
+        var k = Math.round(p[0] * 400) + ',' + Math.round(p[1] * 400) + ',' + Math.round(p[2] * 400), s = acc[k] || (acc[k] = [0, 0, 0]);
+        K.push(k); s[0] += q[0]; s[1] += q[1]; s[2] += q[2];
+      }
+    }
+    var v = this.v, ord = det < 0 ? [0, 2, 1] : [0, 1, 2];
+    for (i = 0; i < n; i += 3) for (j = 0; j < 3; j++) {
+      var ix = i + ord[j], pp = W[ix], qq = NN[ix], od = ow > 0 ? vscale(vnorm(acc[K[ix]]), ow) : [0, 0, 0];
+      v.push(pp[0], pp[1], pp[2], qq[0], qq[1], qq[2], od[0], od[1], od[2], c[0], c[1], c[2], e);
+    }
+    return this;
+  };
+  // box: centred on (x,y,z)
+  BP.box = function (x, y, z, w, h, d, col, o) { o = o || {}; var g = geoBox(); return this.prim(g.P, g.N, col, o, primM(x, y, z, o, w, h, d)); };
+  // cyl / cone: base centre at (x,y,z), grows up by h; turns happen about the base
+  BP.cyl = function (x, y, z, r, h, col, o) {
+    o = o || {};
+    var g = geoCyl(o.seg || 12, o.r2 != null ? o.r2 / r : 1, o.flat);
+    return this.prim(g.P, g.N, col, o, primM(x, y, z, o, r, h, r * (o.sz || 1)));
+  };
+  BP.cone = function (x, y, z, r, h, col, o) { var q = {}, k; o = o || {}; for (k in o) q[k] = o[k]; q.r2 = 0; return this.cyl(x, y, z, r, h, col, q); };
+  // ball / rock: centred on (x,y,z)
+  BP.ball = function (x, y, z, r, col, o) {
+    o = o || {};
+    var g = geoSphere(o.seg || 14, o.rings || 9, o.flat, 0);
+    return this.prim(g.P, g.N, col, o, primM(x, y, z, o, r * (o.sx || 1), r * (o.sy || 1), r * (o.sz || 1)));
+  };
+  BP.rock = function (x, y, z, r, col, o) {
+    o = o || {};
+    var g = geoSphere(o.seg || 7, o.rings || 5, true, o.jit != null ? o.jit : 0.4, this.r);
+    return this.prim(g.P, g.N, col, o, primM(x, y, z, o, r * (o.sx || 1), r * (o.sy || 1), r * (o.sz || 1)));
+  };
+  // link: a rod from one point to another (wires, branches, beams, chalk strokes)
+  BP.link = function (x1, y1, z1, x2, y2, z2, r, col, o) {
+    o = o || {};
+    var d = [x2 - x1, y2 - y1, z2 - z1], L = vlen(d);
+    if (L < 1e-6) return this;
+    var Y = vscale(d, 1 / L), X = vnorm(vcross(Y, Math.abs(Y[1]) < 0.99 ? [0, 1, 0] : [1, 0, 0])), Z = vcross(X, Y);
+    var pm = mat();
+    pm.set([X[0] * r, X[1] * r, X[2] * r, 0, Y[0] * L, Y[1] * L, Y[2] * L, 0, Z[0] * r, Z[1] * r, Z[2] * r, 0, x1, y1, z1, 1]);
+    var g = geoCyl(o.seg || 6, o.r2 != null ? o.r2 / r : 1, o.flat);
+    return this.prim(g.P, g.N, col, o, pm);
+  };
+  // wedge: a roof, base centre at (x,y,z), ridge along z
+  BP.wedge = function (x, y, z, w, h, d, col, o) { o = o || {}; var g = geoWedge(); return this.prim(g.P, g.N, col, o, primM(x, y, z, o, w, h, d)); };
+  // tris: your own triangles, [x,y,z, x,y,z, x,y,z, ...], counter-clockwise from the side that shows; o.two shows both sides
+  BP.tris = function (pts, col, o) {
+    o = o || {};
+    var P = [], N = [], i, k;
+    for (i = 0; i + 8 < pts.length; i += 9) {
+      var a = [pts[i], pts[i + 1], pts[i + 2]], b = [pts[i + 3], pts[i + 4], pts[i + 5]], c = [pts[i + 6], pts[i + 7], pts[i + 8]];
+      var n = vnorm(vcross(vsub(b, a), vsub(c, a)));
+      var sets = o.two ? [[a, b, c, n], [a, c, b, vscale(n, -1)]] : [[a, b, c, n]];
+      for (k = 0; k < sets.length; k++) for (var j = 0; j < 3; j++) { P.push.apply(P, sets[k][j]); N.push.apply(N, sets[k][3]); }
+    }
+    return this.prim(P, N, col, o, mat());
+  };
+  // halo: a soft glow that always faces the camera; o.a strength 0..1; o.beam: a tall shaft of light this high instead
+  BP.halo = function (x, y, z, size, col, o) {
+    o = o || {};
+    var sc = vlen([this.m[0], this.m[1], this.m[2]]);
+    this.halos.push({ p: mpoint(this.m, x, y, z), s: size * sc, c: rgb(col), a: o.a != null ? o.a : 1, beam: o.beam ? o.beam * sc : 0 });
+    return this;
+  };
+  // anim: a moving part. build(p) draws it with the same API around its own origin (placed where anim is called);
+  // update(t, m) runs every frame: t in seconds, set m.x m.y m.z (offset), m.rx m.ry m.rz (degrees), m.s (scale), m.v (0 hides it),
+  // m.f (0..1 lights up the whole scene for a moment, like lightning)
+  BP.anim = function (build, update) {
+    var c = new Builder(Math.floor(this.r() * 4294967295));
+    c.out = this.out;
+    build(c);
+    this.anims.push({ b: c, base: new Float32Array(this.m), fn: update });
+    return this;
+  };
+  // land: where the two characters stand (x, z on the ground, facing turn ry, ground height y)
+  BP.land = function (x, z, ry, y) { this.info.land = [x || 0, y || 0, z || 0, ry || 0]; return this; };
+  // frame: the camera for the wide talking shot, from (ex,ey,ez) looking at (ax,ay,az)
+  BP.frame = function (ex, ey, ez, ax, ay, az) { this.info.eye = [ex, ey, ez]; this.info.at = [ax, ay, az]; return this; };
+  // ground: the island's top and rock colours; o.r its radius (8 to 16, default 12)
+  BP.ground = function (top, rock, o) { this.info.top = top; this.info.rock = rock; if (o && o.r) this.info.radius = clamp(o.r, 8, 16); return this; };
+  // sky: tint the sky, light and fog toward this colour while the camera is here (amount 0..1)
+  BP.sky = function (col, amt) { this.info.sky = rgb(col); this.info.skyAmt = clamp(amt || 0, 0, 1); return this; };
+
+  // The floating rock under every scene, made after the scene from its ground colours.
+  function islandBase(b) {
+    var I = b.info, R = I.radius, r = b.r, n = 22, i, k;
+    b.m = mat(); b.st = []; b.out = 1;
+    var rim = [];
+    for (i = 0; i < n; i++) rim.push(R * (0.95 + r() * 0.09));
+    var rings = [[0, 1, 0], [-0.8, 1.02, 0], [-3.4, 0.84, 0.25], [-7.2, 0.6, 0.3], [-11.2, 0.3, 0.35]];
+    var pts = rings.map(function (g, k) {
+      var row = [];
+      for (var i = 0; i < n; i++) {
+        var a = i / n * 2 * Math.PI + (k > 1 ? (r() - 0.5) * 0.12 : 0), rr = rim[i] * g[1] * (1 + (r() - 0.5) * g[2]);
+        row.push([Math.cos(a) * rr, g[0] + (k > 1 ? (r() - 0.5) * 1.4 : 0), Math.sin(a) * rr]);
+      }
+      return row;
+    });
+    var tip = [(r() - 0.5) * 2, -15.5 - r() * 3, (r() - 0.5) * 2];
+    var top = [], bands = [[], [], [], []], cap = [];
+    function put(L, a, b, c) { L.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+    for (i = 0; i < n; i++) {
+      var j = (i + 1) % n;
+      put(top, [0, 0, 0], pts[0][j], pts[0][i]);
+      for (k = 0; k < 4; k++) { put(bands[k], pts[k + 1][i], pts[k][i], pts[k][j]); put(bands[k], pts[k + 1][i], pts[k][j], pts[k + 1][j]); }
+      put(cap, tip, pts[4][i], pts[4][j]);
+    }
+    b.tris(top, I.top);
+    b.tris(bands[0], mixHex(I.top, 0x1a1030, 0.28));
+    b.tris(bands[1], I.rock);
+    b.tris(bands[2], mixHex(I.rock, 0x1a1030, 0.2));
+    b.tris(bands[3], mixHex(I.rock, 0xffffff, 0.08));
+    b.tris(cap, mixHex(I.rock, 0x1a1030, 0.32));
+    for (i = 0; i < 4; i++) {
+      var a = r() * 2 * Math.PI, d = R + 2.5 + r() * 5;
+      b.rock(Math.cos(a) * d, -2 - r() * 8, Math.sin(a) * d, 0.5 + r() * 1.2, I.rock, { sy: 1.3 });
+    }
+  }
+
+  // ======================= SCENES: start =======================
+  // One function per scene name from map-format.md, drawn with the builder above. A name with no function here
+  // gets the placeholder island. Scene files made later are joined in just above the end marker.
+  var SCENES = {};
+
+  SCENES.classroom = function (b) {
+    var WOOD = 0xc98a4f, PLANK = 0xa9713f, WALL = 0xf3e2c2, TRIM = 0x8b5a3c, BOARD = 0x2e5f4b, CHALK = 0xeef4e8,
+      METAL = 0x6c778a, GLASS = 0xc4ecff, WHITE = 0xfaf7ef, CHAIRS = [0xe0673c, 0x2f9fb0, 0xf2b53a, 0x7aa33c];
+    var i, k;
+    b.ground(0x86c86a, 0x9a7b5f);
+    // floor, back wall, wainscot
+    b.box(0, 0.12, 0, 13, 0.24, 10.4, WOOD);
+    for (i = -5; i <= 5; i++) b.box(i * 1.18, 0.255, 0, 0.05, 0.03, 10.3, PLANK, { o: 0 });
+    b.box(0, 2.75, -5, 13, 5.1, 0.4, WALL);
+    b.box(0, 0.75, -4.77, 12.6, 1.0, 0.06, TRIM, { o: 0.5 });
+    b.box(0, 5.35, -5, 13.4, 0.26, 0.62, TRIM);
+    // left wall: pillars and three tall windows
+    var WX = -6.3;
+    [-5.0, -1.7, 1.7, 5.0].forEach(function (z) { b.box(WX, 2.75, z, 0.4, 5.1, 0.6, WALL); });
+    [-3.35, 0, 3.35].forEach(function (z) {
+      b.box(WX, 0.72, z, 0.4, 0.96, 2.72, WALL);
+      b.box(WX, 4.75, z, 0.4, 1.3, 2.72, WALL);
+      b.box(WX, 2.65, z, 0.06, 2.9, 2.7, GLASS, { e: 0.75, o: 0 });
+      b.box(WX + 0.1, 2.65, z, 0.08, 2.9, 0.1, WHITE, { o: 0.5 });
+      b.box(WX + 0.1, 2.65, z, 0.08, 0.1, 2.7, WHITE, { o: 0.5 });
+      b.box(WX + 0.12, 1.22, z, 0.2, 0.08, 2.72, WHITE, { o: 0.5 });
+    });
+    b.box(WX + 0.23, 0.75, 0, 0.06, 1.0, 10.4, TRIM, { o: 0.5 });
+    b.box(WX, 5.35, 0, 0.62, 0.26, 10.6, TRIM);
+    // the chalkboard, with scribbles that are not words
+    b.box(0, 2.85, -4.76, 6.8, 2.7, 0.1, TRIM);
+    b.box(0, 2.85, -4.69, 6.4, 2.3, 0.06, BOARD, { o: 0 });
+    b.box(0, 1.62, -4.6, 6.4, 0.08, 0.26, TRIM);
+    b.box(-1.2, 1.7, -4.58, 0.22, 0.06, 0.06, WHITE, { o: 0 });
+    b.box(2.1, 1.7, -4.56, 0.16, 0.06, 0.06, 0xf7d95a, { o: 0 });
+    function stroke(pts) {
+      for (var k = 0; k + 1 < pts.length; k++)
+        b.link(pts[k][0], pts[k][1], -4.64, pts[k + 1][0], pts[k + 1][1], -4.64, 0.03, CHALK, { o: 0, e: 0.35, seg: 4 });
+    }
+    for (i = 0; i < 4; i++) {
+      var row = [];
+      for (k = 0; k <= 11 - i; k++) row.push([-2.8 + k * 0.23, 3.6 - i * 0.48 + Math.sin(k * 2.3 + i) * 0.07]);
+      stroke(row);
+    }
+    var circ = [];
+    for (k = 0; k <= 14; k++) circ.push([1.5 + Math.cos(k / 14 * 2 * Math.PI) * 0.62, 3.0 + Math.sin(k / 14 * 2 * Math.PI) * 0.62]);
+    stroke(circ);
+    stroke([[1.02, 2.62], [1.5, 3.55], [1.98, 2.62], [1.02, 2.62]]);
+    stroke([[2.3, 3.0], [2.9, 3.0], [2.72, 3.14]]);
+    stroke([[2.9, 3.0], [2.72, 2.86]]);
+    // clock with moving hands
+    b.cyl(4.3, 4.2, -4.82, 0.44, 0.1, WHITE, { rx: 90, seg: 16 });
+    b.cyl(4.3, 4.2, -4.84, 0.5, 0.08, TRIM, { rx: 90, seg: 16 });
+    b.push(4.3, 4.2, -4.68);
+    b.anim(function (p) { p.box(0, 0.16, 0, 0.045, 0.34, 0.02, 0x222230, { o: 0 }); }, function (t, m) { m.rz = -t * 36; });
+    b.anim(function (p) { p.box(0, 0.1, 0.02, 0.06, 0.22, 0.02, 0x222230, { o: 0 }); }, function (t, m) { m.rz = -t * 3 - 60; });
+    b.pop();
+    // teacher's desk with a globe, an apple and books
+    b.push(3.9, 0.24, -3.4);
+    b.box(0, 0.8, 0, 2.3, 0.1, 1.1, PLANK);
+    b.box(0, 0.38, 0, 2.2, 0.74, 1.0, WOOD);
+    b.cyl(0.7, 0.85, 0, 0.15, 0.05, METAL);
+    b.link(0.7, 0.88, 0, 0.7, 1.05, 0, 0.03, METAL);
+    b.ball(0.7, 1.32, 0, 0.3, 0x3a86d8);
+    b.ball(0.83, 1.42, 0.17, 0.13, 0x5fb34a, { sz: 0.55, o: 0 });
+    b.ball(0.52, 1.24, 0.19, 0.1, 0x5fb34a, { sz: 0.55, o: 0 });
+    b.ball(-0.55, 0.96, 0.18, 0.11, 0xe2402f);
+    b.link(-0.55, 1.05, 0.18, -0.53, 1.14, 0.18, 0.015, 0x5a3a1a, { o: 0 });
+    b.box(-0.1, 0.9, -0.2, 0.52, 0.1, 0.36, 0x3b6fd1);
+    b.box(-0.1, 1.0, -0.2, 0.46, 0.1, 0.32, 0xd9463a);
+    b.pop();
+    // pupils' desks and chairs, facing the board
+    [-1.7, 0.5].forEach(function (z, r) {
+      [-4.1, -1.5, 1.5, 4.1].forEach(function (x, c) {
+        var col = CHAIRS[(r + c) % 4];
+        b.push(x, 0.24, z);
+        b.box(0, 0.74, 0, 1.25, 0.08, 0.72, PLANK);
+        [[-0.55, -0.3], [0.55, -0.3], [-0.55, 0.3], [0.55, 0.3]].forEach(function (q) { b.box(q[0], 0.36, q[1], 0.06, 0.72, 0.06, METAL, { o: 0.5 }); });
+        b.box(0, 0.45, 0.68, 0.54, 0.07, 0.5, col);
+        b.box(0, 0.82, 0.92, 0.54, 0.44, 0.07, col);
+        [[-0.22, 0.48], [0.22, 0.48], [-0.22, 0.88], [0.22, 0.88]].forEach(function (q) { b.box(q[0], 0.22, q[1], 0.05, 0.44, 0.05, METAL, { o: 0.5 }); });
+        if ((r + c) % 2) b.box(0.18, 0.795, -0.05, 0.34, 0.02, 0.42, WHITE, { o: 0, ry: 12 });
+        else b.box(-0.2, 0.81, 0, 0.36, 0.06, 0.28, 0x2f9f6b);
+        b.pop();
+      });
+    });
+    // bookshelf by the back corner, and a plant
+    b.push(-4.9, 0.24, -4.35);
+    b.box(0, 1.1, 0, 1.6, 2.2, 0.5, 0x6e4630);
+    var BOOKS = [0xd9463a, 0x3b6fd1, 0xf2b53a, 0x2f9f6b, 0x8a5ec9, 0xe98a3a];
+    for (i = 0; i < 3; i++) for (k = 0; k < 6; k++) {
+      var h = 0.42 + ((i * 7 + k * 3) % 4) * 0.06;
+      b.box(-0.6 + k * 0.24, 0.12 + i * 0.7 + h / 2, 0.2, 0.19, h, 0.32, BOOKS[(i * 5 + k) % 6], { o: 0.5 });
+    }
+    b.pop();
+    b.cyl(-5.3, 0.24, 3.9, 0.35, 0.55, 0xc8643a, { r2: 0.42 });
+    b.ball(-5.3, 1.1, 3.9, 0.52, 0x3f9a45);
+    b.ball(-5.05, 1.48, 3.75, 0.36, 0x52b152);
+    // a paper plane circling over the desks
+    b.push(0, 3.5, -1.2);
+    b.anim(function (p) {
+      p.tris([0, 0, 0.34, 0, 0.03, -0.26, -0.25, 0.03, -0.26, 0, 0, 0.34, 0.25, 0.03, -0.26, 0, 0.03, -0.26,
+        0, 0, 0.34, 0, -0.09, -0.26, 0, 0.03, -0.26], WHITE, { two: true, o: 0.7 });
+    }, function (t, m) {
+      var a = t * 0.8;
+      m.x = Math.cos(a) * 3.6; m.z = Math.sin(a) * 2.0; m.y = Math.sin(t * 1.6) * 0.35;
+      m.ry = Math.atan2(-Math.sin(a) * 3.6, Math.cos(a) * 2.0) / DEG; m.rz = -18;
+    });
+    b.pop();
+    b.land(0, 3.3, 0, 0.24);
+    b.frame(4.6, 3.3, 10.8, -0.5, 1.9, -1.4);
+  };
+
+  SCENES.wasteland = function (b) {
+    var R1 = 0xa3735a, R2 = 0x80594a, R3 = 0x614643, R4 = 0xc79c74, CRACK = 0x4a322b, WOOD = 0x4d3c35;
+    var i, k, r = function () { return b.rand(); };
+    b.ground(0xb38d66, 0x735a4b);
+    b.sky(0x3a3452, 0.62);
+    // layered cliffs and spires in a crescent behind the landing spot
+    [[-8.4, -3.4, 5.6, 2.2], [-5.8, -6.6, 8.2, 2.7], [-2.0, -8.8, 7.0, 3.0], [2.6, -8.2, 8.8, 2.6],
+      [6.2, -6.2, 6.4, 2.5], [8.8, -2.6, 4.6, 2.0], [-10.2, 1.4, 3.2, 1.6], [10.1, 2.0, 2.8, 1.5]].forEach(function (c) {
+      var y = 0, cols = [R2, R1, R3, R1], x = c[0], z = c[1];
+      for (var k = 0; k < 3; k++) {
+        var bh = c[2] / 3 * (0.8 + r() * 0.4), lean = (r() - 0.5) * 8;
+        b.cyl(x, y, z, c[3] * (1 - k * 0.22), bh, cols[k], { r2: c[3] * (1 - (k + 1) * 0.22) + 0.22, seg: 6, flat: true, ry: r() * 360, rz: lean });
+        x += Math.sin(lean * DEG) * -bh; y += bh * 0.98;
+      }
+      b.rock(x, y + 0.15, z, c[3] * 0.5, R4, { sy: 0.5 });
+      b.rock(c[0] + c[3] * 0.9, 0.4, c[1] + 0.6, c[3] * 0.45, R3, {});
+    });
+    [[-3.9, -5.2, 5.2], [0.4, -6.4, 6.4], [4.4, -4.8, 4.6], [-7.2, -1.0, 3.6], [7.4, -0.4, 3.2]].forEach(function (q) {
+      b.cone(q[0], 0, q[1], 0.75, q[2], R2, { seg: 5, flat: true, ry: r() * 360, rz: (r() - 0.5) * 12 });
+      b.cone(q[0] + 0.5, 0, q[1] + 0.3, 0.45, q[2] * 0.55, R3, { seg: 5, flat: true, ry: r() * 360 });
+    });
+    // boulders
+    [[-4.4, 0.4, 0.9], [4.8, 1.0, 1.1], [-6.6, 4.4, 0.7], [6.9, 4.8, 0.8], [3.0, -3.4, 1.0], [-3.4, -3.8, 1.2],
+      [-1.6, 6.2, 0.45], [3.9, 6.4, 0.5], [8.0, -0.6, 0.9], [-8.4, -0.4, 1.0]].forEach(function (q) {
+      b.rock(q[0], q[2] * 0.35, q[1], q[2], r() < 0.5 ? R2 : R3, {});
+    });
+    // cracks running out from where the two land, and a shallow dent
+    b.cyl(0, -0.02, 2.4, 1.7, 0.04, 0x9a7755, { seg: 14, o: 0 });
+    for (i = 0; i < 9; i++) {
+      var a = i / 9 * 2 * Math.PI + r() * 0.4, rad = 1.2, x0 = Math.cos(a) * rad, z0 = 2.4 + Math.sin(a) * rad;
+      for (k = 0; k < 4; k++) {
+        var rad2 = rad + 0.8 + r() * 0.9, aa = a + (r() - 0.5) * 0.5, x1 = Math.cos(aa) * rad2, z1 = 2.4 + Math.sin(aa) * rad2;
+        b.link(x0, 0.03, z0, x1, 0.03, z1, 0.07 - k * 0.012, CRACK, { o: 0, seg: 4 });
+        x0 = x1; z0 = z1; rad = rad2;
+      }
+    }
+    // dead trees
+    [[-6.9, 2.3, 1.0], [6.3, -1.6, 1.2], [-2.8, -5.7, 0.9]].forEach(function (q) {
+      b.push(q[0], 0, q[1], r() * 360, q[2]);
+      b.cyl(0, 0, 0, 0.17, 1.9, WOOD, { r2: 0.07, seg: 6 });
+      b.link(0, 1.1, 0, 0.7, 1.9, 0.1, 0.08, WOOD, { r2: 0.03, seg: 5 });
+      b.link(0, 1.45, 0, -0.55, 2.15, -0.15, 0.065, WOOD, { r2: 0.025, seg: 5 });
+      b.link(0.42, 1.58, 0.05, 0.58, 2.25, 0.36, 0.035, WOOD, { r2: 0.015, seg: 4 });
+      b.pop();
+    });
+    // the storm overhead
+    for (i = 0; i < 16; i++) b.ball(-13 + i * 1.7 + r(), 9.5 + r() * 2.5, -10 - r() * 6, 3 + r() * 2.2, i % 3 ? 0x4a4560 : 0x5d5672, { sy: 0.5, o: 0, seg: 10, rings: 6, e: 0.08 });
+    for (i = 0; i < 6; i++) b.ball(-8 + i * 3.2, 12.5 + r(), -4 - r() * 3, 2.6 + r() * 1.4, 0x413c56, { sy: 0.4, o: 0, seg: 10, rings: 6 });
+    b.anim(function (p) {
+      var x = 5.2, y = 10.5, z = -9.5, pts = [[x, y, z]];
+      for (var k = 0; k < 8; k++) { y -= 1.32; x += (p.rand() - 0.5) * 1.3; z += (p.rand() - 0.5) * 0.6; pts.push([x, Math.max(y, 0), z]); }
+      for (k = 0; k + 1 < pts.length; k++) p.link(pts[k][0], pts[k][1], pts[k][2], pts[k + 1][0], pts[k + 1][1], pts[k + 1][2], 0.09, 0xf6f0ff, { e: 1, o: 0, seg: 4 });
+      p.link(pts[3][0], pts[3][1], pts[3][2], pts[3][0] + 1.2, pts[3][1] - 1.6, pts[3][2] + 0.3, 0.05, 0xf6f0ff, { e: 1, o: 0, seg: 4 });
+      p.halo(pts[8][0], 0.6, pts[8][2], 4, 0xd8ccff, { a: 1 });
+      p.halo(pts[0][0], pts[0][1], pts[0][2], 7, 0xb9a8ff, { a: 0.8 });
+    }, function (t, m) { var c = t % 3.1; m.v = (c < 0.09 || (c > 0.16 && c < 0.26)) ? 1 : 0; m.f = m.v * 0.5; });
+    // pebbles rising in the charged air
+    for (i = 0; i < 9; i++) (function (ph, x, z, s) {
+      b.anim(function (p) { p.rock(0, 0, 0, s, R4, {}); }, function (t, m) {
+        var c = (t * 0.2 + ph) % 1;
+        m.x = x; m.z = z; m.y = 0.2 + c * 3.4; m.ry = t * 50; m.rx = t * 35; m.s = Math.min(1, c * 8, (1 - c) * 6);
+      });
+    })(r(), (r() - 0.5) * 9, 2.4 + (r() - 0.5) * 5, 0.12 + r() * 0.14);
+    b.land(0, 2.4, 0);
+    b.frame(4.8, 2.2, 10.8, -0.3, 3.6, -3);
+  };
+
+  SCENES['ai-network'] = function (b) {
+    var CY = 0x3fe6ff, MG = 0xff52d9, WH = 0xeafcff, PLATE = 0x2b3563, METAL = 0x46507a, SCREEN = 0x0e1b36;
+    var i, k;
+    b.ground(0x232b4f, 0x2c3152);
+    // glowing traces on the ground, running toward the platform
+    for (i = 0; i < 14; i++) {
+      var a = i / 14 * 2 * Math.PI + 0.2, r0 = 5.2 + (i % 3) * 1.6, x = Math.cos(a) * r0, z = Math.sin(a) * r0 * 0.85;
+      var len = 1.2 + (i % 4) * 0.6, dx = -Math.sign(x) * len;
+      b.box(x + dx / 2, 0.03, z, Math.abs(dx), 0.03, 0.08, CY, { e: 1, o: 0 });
+      b.box(x + dx, 0.03, z + (z > 0 ? -0.6 : 0.6) / 2, 0.08, 0.03, 0.6, CY, { e: 1, o: 0 });
+      b.cyl(x, 0, z, 0.17, 0.06, CY, { e: 1, o: 0, seg: 8 });
+    }
+    // the platform
+    b.cyl(0, 0, 2.4, 2.6, 0.2, PLATE, { seg: 6, flat: true });
+    b.cyl(0, 0.2, 2.4, 1.3, 0.025, 0x3a4886, { seg: 6, o: 0 });
+    for (i = 0; i < 6; i++) {
+      var a0 = i / 6 * 2 * Math.PI, a1 = (i + 1) / 6 * 2 * Math.PI;
+      b.link(Math.cos(a0) * 2.63, 0.21, 2.4 + Math.sin(a0) * 2.63, Math.cos(a1) * 2.63, 0.21, 2.4 + Math.sin(a1) * 2.63, 0.05, CY, { e: 1, o: 0, seg: 4 });
+    }
+    // the network: nodes, links, a turning core
+    var N = [[0, 4.8, -3.8, 0.8, MG], [-4.2, 2.6, -2.8, 0.38, CY], [4.4, 3.0, -2.6, 0.42, CY], [-2.6, 5.8, -6, 0.42, WH], [2.9, 6.2, -5.6, 0.38, CY],
+      [-6.4, 4.6, -5, 0.32, MG], [6.6, 4.9, -4.6, 0.34, WH], [0.2, 8.2, -6.8, 0.44, CY], [-4.6, 7.8, -7.2, 0.3, CY], [4.9, 8.0, -7.4, 0.32, MG],
+      [-7.6, 1.9, -0.6, 0.3, CY], [7.7, 2.1, -0.2, 0.32, CY], [-1.9, 2.4, -7.2, 0.3, WH], [2.1, 3.6, -8.2, 0.3, CY]];
+    var E = [[0, 1], [0, 2], [0, 3], [0, 4], [1, 5], [2, 6], [3, 7], [4, 7], [3, 8], [4, 9], [5, 8], [6, 9], [1, 10], [2, 11],
+      [0, 12], [12, 13], [4, 13], [7, 8], [7, 9], [1, 3], [2, 4]];
+    E.forEach(function (e) { var A = N[e[0]], B = N[e[1]]; b.link(A[0], A[1], A[2], B[0], B[1], B[2], 0.045, CY, { e: 0.9, o: 0, seg: 5 }); });
+    N.forEach(function (n, k) {
+      if (k === 0) return;
+      b.ball(n[0], n[1], n[2], n[3], n[4], { e: 0.8, o: 0.6 });
+      b.halo(n[0], n[1], n[2], n[3] * 4.5, n[4], { a: 0.55 });
+      if (n[1] < 4) { b.cyl(n[0], 0, n[2], 0.09, n[1] - n[3], METAL, { seg: 6 }); b.cyl(n[0], 0, n[2], 0.42, 0.12, PLATE, { seg: 6, flat: true }); }
+    });
+    function ring(p, R, col) {
+      for (var k = 0; k < 20; k++) {
+        var a0 = k / 20 * 2 * Math.PI, a1 = (k + 1) / 20 * 2 * Math.PI;
+        p.link(Math.cos(a0) * R, 0, Math.sin(a0) * R, Math.cos(a1) * R, 0, Math.sin(a1) * R, 0.045, col, { e: 1, o: 0, seg: 4 });
+      }
+    }
+    b.push(N[0][0], N[0][1], N[0][2]);
+    b.anim(function (p) { p.ball(0, 0, 0, 0.95, MG, { seg: 4, rings: 2, flat: true, e: 0.5, sy: 1.35 }); p.halo(0, 0, 0, 5.5, MG, { a: 0.7 }); },
+      function (t, m) { m.ry = t * 45; m.y = Math.sin(t * 1.4) * 0.18; });
+    b.anim(function (p) { ring(p, 1.6, CY); }, function (t, m) { m.rx = 70; m.ry = t * 30; });
+    b.anim(function (p) { ring(p, 2.1, WH); }, function (t, m) { m.rx = -62; m.rz = t * 25; });
+    b.pop();
+    // pulses of light running along the links
+    for (i = 0; i < 12; i++) (function (e, ph, sp) {
+      var A = N[e[0]], B = N[e[1]];
+      b.anim(function (p) { p.ball(0, 0, 0, 0.13, WH, { e: 1, o: 0, seg: 8, rings: 5 }); p.halo(0, 0, 0, 1.2, CY, { a: 0.9 }); },
+        function (t, m) {
+          var c = (t * sp + ph) % 1;
+          m.x = lerp(A[0], B[0], c); m.y = lerp(A[1], B[1], c); m.z = lerp(A[2], B[2], c); m.s = Math.min(1, c * 6, (1 - c) * 6);
+        });
+    })(E[(i * 5) % E.length], b.rand(), 0.35 + b.rand() * 0.3);
+    // two floating screens with charts that hold no words
+    function screen(x, y, z, ry, bars) {
+      b.push(x, y, z, ry);
+      b.anim(function (p) {
+        p.box(0, 0, 0, 2.3, 1.45, 0.1, METAL);
+        p.box(0, 0, 0.06, 2.1, 1.25, 0.03, SCREEN, { e: 0.7, o: 0 });
+        var px = -0.9, py = -0.3;
+        for (var k = 0; k < 8; k++) {
+          if (bars) { var h = 0.2 + p.rand() * 0.8; p.box(-0.84 + k * 0.24, -0.52 + h / 2, 0.09, 0.14, h, 0.03, k % 2 ? CY : MG, { e: 1, o: 0 }); }
+          else { var nx = -0.9 + (k + 1) * 0.225, ny = -0.45 + p.rand() * 0.9; p.link(px, py, 0.09, nx, ny, 0.09, 0.028, CY, { e: 1, o: 0, seg: 4 }); px = nx; py = ny; }
+        }
+        p.box(0, -0.53, 0.085, 1.9, 0.02, 0.02, WH, { e: 0.8, o: 0 });
+        p.halo(0, 0, 0.3, 2.8, CY, { a: 0.22 });
+      }, function (t, m) { m.y = Math.sin(t * 1.1 + x) * 0.14; m.ry = Math.sin(t * 0.5 + x) * 4; });
+      b.pop();
+    }
+    screen(-4.9, 2.4, 1.3, 38, true);
+    screen(5.0, 2.7, 0.9, -38, false);
+    // small cubes of light drifting up
+    for (i = 0; i < 8; i++) (function (ph, x, z) {
+      b.anim(function (p) { p.box(0, 0, 0, 0.14, 0.14, 0.14, i % 2 ? CY : MG, { e: 1, o: 0 }); }, function (t, m) {
+        var c = (t * 0.16 + ph) % 1;
+        m.x = x; m.z = z; m.y = 0.3 + c * 6; m.ry = t * 90; m.rx = t * 60; m.s = Math.min(1, c * 8, (1 - c) * 5);
+      });
+    })(b.rand(), (b.rand() - 0.5) * 12, -1 - b.rand() * 6);
+    b.land(0, 2.4, 0, 0.2);
+    b.frame(5.4, 3.4, 10.8, -0.3, 3.0, -2.2);
+  };
+
+  // ======================= SCENES: end =======================
+
+  // Any scene name without its own function: a green island with trees and a floating crystal.
+  function placeholderScene(b, nm) {
+    var h = hashStr(nm || '-'), ACC = [0xff5d73, 0x4fd1ff, 0xffc94a, 0x8a7dff, 0x5fe08a, 0xff8a4a][h % 6];
+    var LEAF = [0x3f9a45, 0x55b553, 0x2f8a52], TRUNK = 0x7a4f32, STONE = 0xdcd5c6, i;
+    b.ground(0x7cc86a, 0x9a7b5f);
+    [[-5.5, -3.5, 1.2], [5.8, -2.8, 1.0], [-3, -6.4, 0.9], [3.4, -6.6, 1.1], [7.8, 2.6, 0.8], [-8, 1.8, 0.9]].forEach(function (q, k) {
+      b.push(q[0], 0, q[1], k * 47, q[2]);
+      b.cyl(0, 0, 0, 0.22, 1.4, TRUNK, { r2: 0.15, seg: 7 });
+      b.ball(0, 2.1, 0, 1.05, LEAF[k % 3]);
+      b.ball(0.5, 1.7, 0.3, 0.7, LEAF[(k + 1) % 3]);
+      b.ball(-0.45, 1.8, -0.2, 0.75, LEAF[(k + 2) % 3]);
+      b.pop();
+    });
+    for (i = 0; i < 6; i++) b.rock((b.rand() - 0.5) * 16, 0.2, -1 + (b.rand() - 0.5) * 12, 0.3 + b.rand() * 0.4, 0xa9a39a, {});
+    for (i = 0; i < 16; i++) b.ball((b.rand() - 0.5) * 16, 0.08, (b.rand() - 0.5) * 14, 0.09, i % 3 ? ACC : 0xffffff, { o: 0, seg: 6, rings: 4 });
+    b.cyl(0, 0, -2.6, 1.0, 0.5, STONE, { seg: 8, flat: true });
+    b.cyl(0, 0.5, -2.6, 0.7, 0.4, mixHex(STONE, 0x000000, 0.1), { seg: 8, flat: true });
+    b.push(0, 2.4, -2.6);
+    b.anim(function (p) { p.ball(0, 0, 0, 0.55, ACC, { seg: 4, rings: 2, flat: true, e: 0.45, sy: 1.6 }); p.halo(0, 0, 0, 3.4, ACC, { a: 0.6 }); },
+      function (t, m) { m.ry = t * 50; m.y = Math.sin(t * 1.6) * 0.15; });
+    b.pop();
+    b.land(0, 2.4, 0);
+  }
+
+  // The end of the journey: a bright island with a turning crystal, above the middle of the universe.
+  function summitScene(b) {
+    var i;
+    b.ground(0xf3ead2, 0xb49a74, { r: 10 });
+    for (i = 0; i < 8; i++) {
+      var a = i / 8 * 2 * Math.PI, x = Math.cos(a) * 7, z = Math.sin(a) * 7;
+      b.cyl(x, 0, z, 0.45, 3.4, 0xf8f3e6, { seg: 8 });
+      b.box(x, 3.5, z, 1.1, 0.26, 1.1, 0xe8c25a);
+    }
+    b.cyl(0, 0, -1.5, 2.3, 0.5, 0xe9dfc4, { seg: 8, flat: true });
+    b.cyl(0, 0.5, -1.5, 1.5, 0.4, 0xd9b653, { seg: 8, flat: true });
+    b.push(0, 4.6, -1.5);
+    b.anim(function (p) { p.ball(0, 0, 0, 1.3, 0xfff0b0, { seg: 4, rings: 2, flat: true, e: 0.55, sy: 1.6 }); p.halo(0, 0, 0, 9, 0xffe7a0, { a: 0.7 }); },
+      function (t, m) { m.ry = t * 35; m.y = Math.sin(t * 1.3) * 0.25; });
+    b.pop();
+    b.halo(0, 40, -1.5, 6, 0xfff2c8, { beam: 60, a: 0.45 });
+    b.land(0, 3.2, 0);
+  }
+
+  // ======================= characters =======================
+  // Parts: [name, parent, x, y, z (joint position in the parent), build]. Each part turns at its joint.
+  function Char(parts, look) {
+    var self = this;
+    this.nodes = []; this.idx = {}; this.look = look;
+    parts.forEach(function (p) {
+      var b = new Builder(3);
+      p[5](b);
+      self.idx[p[0]] = self.nodes.length;
+      self.nodes.push({ name: p[0], parent: p[1] ? self.idx[p[1]] : -1, off: [p[2], p[3], p[4]], mesh: upload(b.v), rot: [0, 0, 0], W: mat() });
+    });
+    this.pos = [0, 0, 0]; this.yaw = 0; this.root = [0, 0, 0]; this.R = mat(); this.aura = 0.5; this.fly = 0; this.dir = [0, 0, 1];
+  }
+  Char.prototype.pose = function (target, dt) {
+    var k = damp(10, dt), i, a;
+    var tr = target.root || [0, 0, 0];
+    for (a = 0; a < 3; a++) this.root[a] += (tr[a] - this.root[a]) * k;
+    for (i = 0; i < this.nodes.length; i++) {
+      var n = this.nodes[i], tg = target[n.name] || [0, 0, 0];
+      for (a = 0; a < 3; a++) n.rot[a] += (tg[a] - n.rot[a]) * k;
+    }
+  };
+  Char.prototype.place = function () {
+    var h = this.look.hip, L = mat();
+    mcompose(this.R, this.pos[0], this.pos[1] + h, this.pos[2], this.root[0] + (this.tilt || 0), this.yaw, this.root[2], 1, 1, 1);
+    for (var i = 0; i < this.nodes.length; i++) {
+      var n = this.nodes[i];
+      mcompose(L, n.off[0], n.off[1], n.off[2], n.rot[0], n.rot[1], n.rot[2], 1, 1, 1);
+      mmul(n.W, n.parent < 0 ? this.R : this.nodes[n.parent].W, L);
+    }
+  };
+  Char.prototype.hand = function () { return mpoint(this.nodes[this.idx.elR].W, 0, -0.3, 0.02); };
+
+  // The guide: the author's avatar. Short brown hair, yellow eyes, light olive skin, a Hawaiian shirt.
+  function makeGuide() {
+    var S = 0xe8c29a, S2 = 0xd5a07a, H = 0x6a4125, HD = 0x2e1a0e, EYE = 0xffc619, K = 0xdcc79c, KD = 0xbba577,
+      W = 0xf6f5f0, SOLE = 0x2c3f7a, C = 0x139ec4;
+    function fl(o) { var q = { floral: true }, k; for (k in o) q[k] = o[k]; return q; }
+    function upper(b) { b.cyl(0, -0.2, 0, 0.095, 0.26, C, fl({ r2: 0.082 })); b.cyl(0, -0.31, 0, 0.054, 0.15, S, { r2: 0.058 }); }
+    function fore(b) {
+      b.cyl(0, -0.25, 0, 0.042, 0.26, S, { r2: 0.052 });
+      b.ball(0, -0.3, 0.006, 0.058, S, { sx: 0.72, sy: 1.1, sz: 0.6 });
+      b.ball(0, -0.27, 0.042, 0.022, S, { o: 0 });
+    }
+    function thigh(b) { b.cyl(0, -0.44, 0, 0.078, 0.47, K, { r2: 0.098 }); }
+    function shin(b) { b.cyl(0, -0.4, 0, 0.064, 0.41, K, { r2: 0.076 }); b.cyl(0, -0.41, 0, 0.074, 0.07, KD); }
+    function shoe(b) { b.ball(0, -0.035, 0.05, 0.078, W, { sx: 0.88, sy: 0.6, sz: 1.6 }); b.box(0, -0.076, 0.05, 0.13, 0.03, 0.23, SOLE); }
+    function head(b) {
+      var s;
+      b.ball(0, 0.135, 0, 0.14, S, { sx: 0.93, sy: 1.0 });
+      b.ball(0, 0.07, 0.03, 0.105, S, { sx: 0.76, sy: 0.8, sz: 0.88 });
+      b.ball(0, 0.03, 0.062, 0.04, S, { sx: 0.9, sy: 0.7, sz: 0.8, o: 0 });
+      b.ball(0.128, 0.11, -0.01, 0.034, S2, { sx: 0.5 });
+      b.ball(-0.128, 0.11, -0.01, 0.034, S2, { sx: 0.5 });
+      for (s = -1; s <= 1; s += 2) {
+        var x = s * 0.05;
+        b.ball(x, 0.112, 0.108, 0.038, 0xffffff, { sx: 0.92, sy: 1.32, sz: 0.5, o: 0, e: 0.35 });
+        b.ball(x + s * 0.002, 0.108, 0.122, 0.029, EYE, { sx: 0.88, sy: 1.22, sz: 0.4, o: 0, e: 0.6 });
+        b.ball(x + s * 0.002, 0.105, 0.1305, 0.013, 0x2a1604, { sy: 1.35, sz: 0.3, o: 0 });
+        b.ball(x - s * 0.01, 0.126, 0.134, 0.009, 0xffffff, { o: 0, e: 1, seg: 8, rings: 5 });
+        b.box(x, 0.158, 0.118, 0.084, 0.018, 0.03, HD, { rz: s * 5, o: 0 });
+        b.box(x + s * 0.006, 0.182, 0.12, 0.062, 0.014, 0.02, HD, { rz: s * 8, o: 0 });
+      }
+      b.ball(0, 0.08, 0.136, 0.012, S2, { o: 0, seg: 8, rings: 5 });
+      b.box(0, 0.045, 0.116, 0.042, 0.009, 0.012, 0x8a3f30, { o: 0, rx: 10 });
+      // hair: short, close at the sides and back, a little volume on top and a soft fringe swept to one side
+      b.ball(0, 0.168, -0.022, 0.143, H, { sx: 1.0, sy: 0.92, sz: 1.0 });
+      b.ball(0, 0.12, -0.07, 0.112, H, { sx: 0.96, sy: 1.0, sz: 0.8 });
+      [[-0.055, 0.282, 0.035, -8], [0.0, 0.29, 0.0, 0], [0.058, 0.28, 0.02, 10], [-0.02, 0.28, -0.075, -4], [0.045, 0.27, -0.09, 8]].forEach(function (L) {
+        b.ball(L[0], L[1], L[2], 0.05, H, { sx: 0.85, sy: 0.6, sz: 1.5, ry: L[3], rx: 12 });
+      });
+      [[-0.082, 0.218, 0.096, 38, 1.4], [-0.04, 0.228, 0.11, 30, 1.5], [0.004, 0.228, 0.115, 22, 1.5], [0.048, 0.222, 0.108, 14, 1.35],
+        [0.088, 0.206, 0.088, 6, 1.2]].forEach(function (L) {
+        b.ball(L[0], L[1], L[2], 0.046, H, { sx: 0.78, sy: L[4], sz: 0.5, rz: L[3], rx: -30 });
+      });
+      for (s = -1; s <= 1; s += 2) b.ball(s * 0.124, 0.13, 0.03, 0.03, H, { sx: 0.5, sy: 1.6, sz: 0.8 });
+    }
+    return new Char([
+      ['hips', null, 0, 0, 0, function (b) { b.ball(0, -0.02, 0, 0.17, K, { sx: 1.05, sy: 0.72, sz: 0.76 }); }],
+      ['spine', 'hips', 0, 0.06, 0, function (b) { b.cyl(0, -0.2, 0, 0.205, 0.42, C, fl({ r2: 0.18, sz: 0.74 })); }],
+      ['chest', 'spine', 0, 0.22, 0, function (b) {
+        b.ball(0, 0.085, 0, 0.21, C, fl({ sx: 1.18, sy: 0.9, sz: 0.72 }));
+        b.ball(0.215, 0.14, 0, 0.095, C, fl({}));
+        b.ball(-0.215, 0.14, 0, 0.095, C, fl({}));
+        b.ball(0, 0.175, 0.105, 0.06, S, { sy: 1.3, sz: 0.5, o: 0 });
+        b.box(0.064, 0.228, 0.1, 0.11, 0.022, 0.1, 0xf4f1e6, { rz: -30, ry: 20, o: 0.6 });
+        b.box(-0.064, 0.228, 0.1, 0.11, 0.022, 0.1, 0xf4f1e6, { rz: 30, ry: -20, o: 0.6 });
+      }],
+      ['neck', 'chest', 0, 0.23, 0, function (b) { b.cyl(0, -0.04, 0, 0.056, 0.11, S); }],
+      ['head', 'neck', 0, 0.06, 0, head],
+      ['shL', 'chest', 0.235, 0.14, 0, upper], ['elL', 'shL', 0, -0.3, 0, fore],
+      ['shR', 'chest', -0.235, 0.14, 0, upper], ['elR', 'shR', 0, -0.3, 0, fore],
+      ['hipL', 'hips', 0.1, -0.06, 0, thigh], ['knL', 'hipL', 0, -0.43, 0, shin], ['ftL', 'knL', 0, -0.41, 0, shoe],
+      ['hipR', 'hips', -0.1, -0.06, 0, thigh], ['knR', 'hipR', 0, -0.43, 0, shin], ['ftR', 'knR', 0, -0.41, 0, shoe]
+    ], { hip: 0.98, aura: [0.28, 0.72, 1.0], seed: 0.3 });
+  }
+
+  // The player: the one being shown around, a plain figure in a long grey coat, faceted where the guide is round.
+  function makePlayer() {
+    var S = 0xf0d4bf, H = 0x2b2622, COAT = 0x59607a, COAT2 = 0x474d63, T = 0x2b2e38, SH = 0x17171d, SHIRT = 0xdfe8f2, TIE = 0x7a2f3a;
+    function q(o) { var r = { seg: 7, flat: true }, k; for (k in o) r[k] = o[k]; return r; }
+    function arm(b) { b.cyl(0, -0.31, 0, 0.07, 0.36, COAT, q({ r2: 0.08 })); }
+    function fore(b) { b.cyl(0, -0.25, 0, 0.064, 0.27, COAT, q({})); b.cyl(0, -0.26, 0, 0.068, 0.04, COAT2, q({})); b.ball(0, -0.3, 0, 0.052, S, { sx: 0.75, sy: 1.1, sz: 0.62 }); }
+    function thigh(b) { b.cyl(0, -0.43, 0, 0.076, 0.45, T, q({ r2: 0.09 })); }
+    function shin(b) { b.cyl(0, -0.4, 0, 0.066, 0.41, T, q({ r2: 0.074 })); }
+    function foot(b) { b.box(0, -0.035, 0.05, 0.11, 0.08, 0.25, SH); }
+    return new Char([
+      ['hips', null, 0, 0, 0, function (b) {
+        b.cyl(0, -0.1, 0, 0.19, 0.16, T, { sz: 0.75 });
+        b.cyl(0, -0.52, 0, 0.25, 0.52, COAT, q({ r2: 0.215, sz: 0.76 }));
+      }],
+      ['spine', 'hips', 0, 0.05, 0, function (b) { b.cyl(0, -0.08, 0, 0.215, 0.36, COAT, q({ r2: 0.24, sz: 0.72 })); }],
+      ['chest', 'spine', 0, 0.26, 0, function (b) {
+        b.cyl(0, -0.04, 0, 0.245, 0.28, COAT, q({ r2: 0.2, sz: 0.66 }));
+        b.box(0, 0.15, 0.128, 0.12, 0.17, 0.05, SHIRT, { o: 0 });
+        b.box(0, 0.11, 0.156, 0.042, 0.16, 0.02, TIE, { o: 0 });
+        b.box(0.07, 0.13, 0.145, 0.05, 0.22, 0.03, COAT2, { rz: -16, o: 0 });
+        b.box(-0.07, 0.13, 0.145, 0.05, 0.22, 0.03, COAT2, { rz: 16, o: 0 });
+      }],
+      ['neck', 'chest', 0, 0.23, 0, function (b) { b.cyl(0, -0.03, 0, 0.056, 0.1, S); }],
+      ['head', 'neck', 0, 0.06, 0, function (b) {
+        b.ball(0, 0.13, 0, 0.128, S, { sx: 0.98, sy: 1.08, seg: 10, rings: 7 });
+        b.ball(0.125, 0.11, 0, 0.03, S, { sx: 0.5 });
+        b.ball(-0.125, 0.11, 0, 0.03, S, { sx: 0.5 });
+        b.ball(0, 0.2, -0.02, 0.13, H, { sy: 0.66, sz: 1.04, seg: 10, rings: 7 });
+        b.ball(0.045, 0.235, 0.035, 0.08, H, { sx: 1.3, sy: 0.5 });
+        b.ball(0, 0.12, -0.07, 0.112, H, { sy: 0.9, sz: 0.8, seg: 10, rings: 7 });
+        for (var s = -1; s <= 1; s += 2) {
+          b.ball(s * 0.045, 0.125, 0.117, 0.018, 0x1d1f2a, { sy: 1.3, sz: 0.4, o: 0 });
+          b.box(s * 0.048, 0.162, 0.117, 0.055, 0.013, 0.015, H, { o: 0 });
+        }
+        b.ball(0, 0.095, 0.128, 0.014, 0xe3bda4, { o: 0, seg: 8, rings: 5 });
+        b.box(0, 0.058, 0.118, 0.036, 0.008, 0.01, 0x9a5a52, { o: 0 });
+      }],
+      ['shL', 'chest', 0.26, 0.15, 0, arm], ['elL', 'shL', 0, -0.31, 0, fore],
+      ['shR', 'chest', -0.26, 0.15, 0, arm], ['elR', 'shR', 0, -0.31, 0, fore],
+      ['hipL', 'hips', 0.1, -0.06, 0, thigh], ['knL', 'hipL', 0, -0.43, 0, shin], ['ftL', 'knL', 0, -0.41, 0, foot],
+      ['hipR', 'hips', -0.1, -0.06, 0, thigh], ['knR', 'hipR', 0, -0.43, 0, shin], ['ftR', 'knR', 0, -0.41, 0, foot]
+    ], { hip: 0.96, aura: [0.7, 0.55, 1.0], seed: 5.1 });
+  }
+
+  // Poses: joint angles in radians. root = the whole body's lean (x) and roll (z).
+  var POSES = {
+    hover: function (t, s) {
+      var w = Math.sin(t * 1.9 + s);
+      return { root: [0.04, 0, 0], spine: [0.04, 0, 0], head: [-0.04, 0, 0], shL: [0.05, 0, 0.26], shR: [0.05, 0, -0.26],
+        elL: [-0.42, 0, 0], elR: [-0.42, 0, 0], hipL: [-0.36 + w * 0.04, 0, 0.05], knL: [0.72, 0, 0], ftL: [0.35, 0, 0],
+        hipR: [-0.1, 0, -0.05], knR: [0.36 + w * 0.05, 0, 0], ftR: [0.3, 0, 0] };
+    },
+    fly: function (t, s) {
+      var w = Math.sin(t * 7 + s) * 0.05;
+      return { root: [1.32, 0, w], head: [-1.0, 0, 0], chest: [-0.1, 0, 0], shL: [0.55, 0, 0.2], shR: [0.55, 0, -0.2],
+        elL: [-0.2, 0, 0], elR: [-0.2, 0, 0], hipL: [0.1 + w, 0, 0.04], hipR: [0.04 - w, 0, -0.04], knL: [0.2, 0, 0], knR: [0.6, 0, 0],
+        ftL: [0.8, 0, 0], ftR: [0.8, 0, 0] };
+    },
+    brake: function () {
+      return { root: [-0.42, 0, 0], head: [0.3, 0, 0], shL: [-0.4, 0, 0.95], shR: [-0.4, 0, -0.95], elL: [-0.6, 0, 0], elR: [-0.6, 0, 0],
+        hipL: [-0.95, 0, 0.12], hipR: [-0.6, 0, -0.12], knL: [1.15, 0, 0], knR: [0.8, 0, 0], ftL: [0.4, 0, 0], ftR: [0.4, 0, 0] };
+    },
+    talk: function (t, s) {
+      var p = POSES.hover(t, s), g = Math.sin(t * 3.2);
+      p.shR = [-0.95 + 0.16 * g, 0, -0.5 - 0.08 * g]; p.elR = [-1.35 + 0.28 * Math.sin(t * 3.2 + 1.2), 0, 0];
+      p.head = [0.05 * Math.sin(t * 4.1), 0.12, 0]; p.chest = [0, 0.12, 0];
+      return p;
+    },
+    summon: function (t, s) {
+      var p = POSES.hover(t, s);
+      p.shR = [-2.5, 0.1, -0.3]; p.elR = [-0.25, 0, 0]; p.head = [-0.3, 0.1, 0]; p.shL = [0.1, 0, 0.5]; p.chest = [-0.08, 0.1, 0];
+      return p;
+    },
+    listen: function (t, s) {
+      var p = POSES.hover(t, s);
+      p.head = [0.06, 0, 0.07 * Math.sin(t * 0.7)]; p.shL = [0.05, 0, 0.14]; p.shR = [0.05, 0, -0.14];
+      p.hipL = [-0.18, 0, 0.03]; p.knL = [0.4, 0, 0]; p.hipR = [-0.06, 0, -0.03]; p.knR = [0.22, 0, 0];
+      return p;
+    }
+  };
+
+  // ======================= WebGL =======================
+  var canvas = document.querySelector('.stage canvas');
+  var gl = null, PR = {}, TEXF = null, QUAD = null, SPRBUF = null, FLATBUF = null;
+  var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var FS_HEAD = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n';
+  var NOISE = 'float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\n' +
+    'float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);' +
+    'return mix(mix(h21(i),h21(i+vec2(1.0,0.0)),f.x),mix(h21(i+vec2(0.0,1.0)),h21(i+vec2(1.0,1.0)),f.x),f.y);}\n';
+  var SH = {
+    // cel shading: three flat bands of light, a rim light, a crisp highlight; the outline pass pushes the shape out
+    celV: ['attribute vec3 aP; attribute vec3 aN; attribute vec3 aO; attribute vec4 aC;',
+      'uniform mat4 uVP; uniform mat4 uM; uniform vec3 uCam; uniform float uOut;',
+      'varying vec3 vN; varying vec4 vC; varying vec3 vW; varying vec3 vL; varying vec3 vLN;',
+      'void main() {',
+      '  vec4 w = uM * vec4(aP, 1.0);',
+      '  if (uOut > 0.0) w.xyz += (uM * vec4(aO, 0.0)).xyz * uOut * min(length(uCam - w.xyz), 90.0);',
+      '  vN = (uM * vec4(aN, 0.0)).xyz; vC = aC; vW = w.xyz; vL = aP; vLN = aN;',
+      '  gl_Position = uVP * w;',
+      '}'].join('\n'),
+    celF: ['uniform vec3 uLD; uniform vec3 uLC; uniform vec3 uSC; uniform vec3 uFog; uniform vec3 uCam; uniform vec3 uRC; uniform vec3 uOC;',
+      'uniform float uFD; uniform float uOut; uniform float uRim; uniform float uSpec; uniform float uFlash; uniform sampler2D uTex;',
+      'varying vec3 vN; varying vec4 vC; varying vec3 vW; varying vec3 vL; varying vec3 vLN;',
+      'void main() {',
+      '  float f = clamp(1.0 - exp(-length(vW - uCam) * uFD), 0.0, 1.0);',
+      '  if (uOut > 0.0) { gl_FragColor = vec4(mix(uOC, uFog, f), 1.0); return; }',
+      '  vec3 n = normalize(vN); vec3 base = vC.rgb; float e = vC.a;',
+      '  if (e > 1.5) { vec2 uv = abs(vLN.x) > abs(vLN.z) ? vL.zy : vL.xy; base = texture2D(uTex, uv * 1.7).rgb; e = 0.0; }',
+      '  float d = dot(n, uLD);',
+      '  vec3 light = d > 0.4 ? uLC : (d > -0.1 ? mix(uSC, uLC, 0.5) : uSC);',
+      '  vec3 col = base * light;',
+      '  vec3 v = normalize(uCam - vW);',
+      '  col += uRC * uRim * step(0.74, 1.0 - max(dot(n, v), 0.0)) * step(0.1, d) * 0.32;',
+      '  col += uLC * uSpec * step(0.975, dot(n, normalize(uLD + v))) * 0.3;',
+      '  col = mix(col, base, e) + uFlash;',
+      '  gl_FragColor = vec4(mix(col, uFog, f), 1.0);',
+      '}'].join('\n'),
+    skyV: ['attribute vec2 aP; uniform vec3 uF; uniform vec3 uR; uniform vec3 uU; uniform vec3 uTS; varying vec3 vD;',
+      'void main() { vD = uF + uR * (aP.x * uTS.x) + uU * ((aP.y - uTS.z) * uTS.y); gl_Position = vec4(aP, 0.9999, 1.0); }'].join('\n'),
+    skyF: ['uniform vec3 uZen; uniform vec3 uHor; uniform vec3 uSunD; uniform vec3 uSunC; uniform float uStars; uniform float uT; varying vec3 vD;',
+      'float h31(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }',
+      'void main() {',
+      '  vec3 d = normalize(vD);',
+      '  vec3 col = mix(uHor, uZen, smoothstep(-0.03, 0.55, d.y));',
+      '  float s = max(dot(d, uSunD), 0.0);',
+      '  col += uSunC * (pow(s, 6.0) * 0.28 + pow(s, 70.0) * 0.55);',
+      '  col = mix(col, vec3(1.0, 0.97, 0.9), smoothstep(0.9984, 0.9990, s));',
+      '  if (uStars > 0.0) { float r = h31(floor(d * 170.0));',
+      '    col += vec3(step(0.9968, r) * uStars * (0.55 + 0.45 * sin(uT * 2.3 + r * 60.0)) * smoothstep(0.02, 0.4, d.y)); }',
+      '  gl_FragColor = vec4(col, 1.0);',
+      '}'].join('\n'),
+    seaV: ['attribute vec2 aP; uniform mat4 uVP; uniform vec3 uCam; uniform float uY; varying vec3 vW;',
+      'void main() { vW = vec3(aP.x * 7000.0 + uCam.x, uY, aP.y * 7000.0 + uCam.z); gl_Position = uVP * vec4(vW, 1.0); }'].join('\n'),
+    seaF: ['uniform vec3 uHi; uniform vec3 uLo; uniform vec3 uFog; uniform vec3 uCam; uniform float uFD; uniform float uT; varying vec3 vW;',
+      NOISE,
+      'void main() {',
+      '  vec2 p = vW.xz * 0.012 + vec2(uT * 0.012, uT * 0.005);',
+      '  float n = vn(p) * 0.55 + vn(p * 2.3 + 5.1) * 0.3 + vn(p * 5.3 - 2.7) * 0.15;',
+      '  vec3 col = n > 0.55 ? uHi : (n > 0.43 ? mix(uLo, uHi, 0.55) : uLo);',
+      '  float f = clamp(1.0 - exp(-length(vW - uCam) * uFD * 0.75), 0.0, 1.0);',
+      '  gl_FragColor = vec4(mix(col, uFog, f), 1.0);',
+      '}'].join('\n'),
+    // sprites: 0 soft glow, 1 flame, 2 flat disc, 3 ring, 4 streak, 5 beam
+    fxV: ['attribute vec3 aP; attribute vec4 aC; attribute vec4 aU; uniform mat4 uVP; varying vec4 vC; varying vec4 vU;',
+      'void main() { vC = aC; vU = aU; gl_Position = uVP * vec4(aP, 1.0); }'].join('\n'),
+    fxF: ['uniform float uT; varying vec4 vC; varying vec4 vU;', NOISE,
+      'void main() {',
+      '  vec2 u = vU.xy; float k = vU.z; float s = vU.w; float r = length(u); float a = 0.0; vec3 c = vC.rgb;',
+      '  if (k < 0.5) a = pow(max(1.0 - r, 0.0), 1.7);',
+      '  else if (k < 1.5) {',
+      '    float y = u.y * 0.5 + 0.5;',
+      '    float n = vn(vec2(u.x * 2.4 + s * 7.0, y * 3.0 - uT * 3.4)) * 0.62 + vn(vec2(u.x * 5.0 - s * 3.0, y * 6.5 - uT * 6.0)) * 0.38;',
+      '    float q = sin(3.1416 * pow(y, 0.62)) * (0.74 + 0.46 * n) - abs(u.x);',
+      '    q -= smoothstep(0.4, 1.0, y) * (n - 0.3) * 0.95;',
+      '    float inner = step(0.26, q);',
+      '    a = step(0.0, q) * smoothstep(0.0, 0.1, y) * (0.5 + 0.5 * inner);',
+      '    c = mix(c, vec3(1.0), inner * 0.7);',
+      '  }',
+      '  else if (k < 2.5) a = r < 1.0 ? (r < 0.62 ? 1.0 : 0.72) : 0.0;',
+      '  else if (k < 3.5) a = smoothstep(0.6, 0.7, r) * (1.0 - smoothstep(0.88, 1.0, r));',
+      '  else if (k < 4.5) a = max(1.0 - u.x * u.x, 0.0) * max(1.0 - abs(u.y), 0.0);',
+      '  else a = pow(max(1.0 - abs(u.x), 0.0), 2.0) * (1.0 - smoothstep(0.3, 1.0, abs(u.y)));',
+      '  a *= vC.a;',
+      '  if (a < 0.004) discard;',
+      '  gl_FragColor = vec4(c * a, a);',
+      '}'].join('\n'),
+    flatV: 'attribute vec2 aP; attribute vec4 aC; varying vec4 vC; void main() { vC = aC; gl_Position = vec4(aP, 0.0, 1.0); }',
+    flatF: 'varying vec4 vC; void main() { gl_FragColor = vec4(vC.rgb * vC.a, vC.a); }'
+  };
+  function compile(type, src) {
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(vs, fs, attrs) {
+    var p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, FS_HEAD + fs));
+    attrs.forEach(function (a, i) { gl.bindAttribLocation(p, i, a); });
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    var u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (var i = 0; i < n; i++) { var info = gl.getActiveUniform(p, i); u[info.name] = gl.getUniformLocation(p, info.name); }
+    return { p: p, u: u, n: attrs.length };
+  }
+  var enabled = 0;
+  function use(P) {
+    gl.useProgram(P.p);
+    for (var i = enabled; i < P.n; i++) gl.enableVertexAttribArray(i);
+    for (i = P.n; i < enabled; i++) gl.disableVertexAttribArray(i);
+    enabled = P.n;
+    return P.u;
+  }
+  function upload(v) {
+    if (!gl || !v.length) return null;
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+    return { buf: buf, n: v.length / 13 };
+  }
+  // The shirt: a repeating pattern of big flowers and leaves, painted once at start.
+  function floralTexture() {
+    var c = document.createElement('canvas'), x = c.getContext('2d'), r = rng(11), i;
+    c.width = c.height = 256;
+    x.fillStyle = '#139ec4'; x.fillRect(0, 0, 256, 256);
+    function wrap(fn) { for (var dx = -256; dx <= 256; dx += 256) for (var dy = -256; dy <= 256; dy += 256) fn(dx, dy); }
+    for (i = 0; i < 10; i++) (function (px, py, a, s) {
+      wrap(function (dx, dy) {
+        x.save(); x.translate(px + dx, py + dy); x.rotate(a);
+        x.fillStyle = i % 2 ? '#0f7a45' : '#2fae62'; x.beginPath(); x.ellipse(0, 0, s, s * 0.36, 0, 0, 6.2832); x.fill();
+        x.strokeStyle = '#136536'; x.lineWidth = 2; x.beginPath(); x.moveTo(-s, 0); x.lineTo(s, 0); x.stroke();
+        x.restore();
+      });
+    })(r() * 256, r() * 256, r() * 6.28, 26 + r() * 14);
+    var cols = ['#ff3b5c', '#ffd23f', '#ff7ab8', '#ffffff', '#ff6a2b'];
+    for (i = 0; i < 6; i++) (function (px, py, rad, col, rot) {
+      wrap(function (dx, dy) {
+        x.save(); x.translate(px + dx, py + dy); x.rotate(rot);
+        x.fillStyle = col;
+        for (var k = 0; k < 5; k++) { x.rotate(1.2566); x.beginPath(); x.ellipse(rad * 0.55, 0, rad * 0.56, rad * 0.4, 0, 0, 6.2832); x.fill(); }
+        x.fillStyle = 'rgba(130,0,40,.55)'; x.beginPath(); x.arc(0, 0, rad * 0.26, 0, 6.2832); x.fill();
+        x.fillStyle = '#ffe680'; x.beginPath(); x.arc(rad * 0.18, -rad * 0.2, rad * 0.1, 0, 6.2832); x.fill();
+        x.restore();
+      });
+    })((i % 3) * 85 + r() * 40, Math.floor(i / 3) * 128 + r() * 50, 30 + r() * 10, cols[i % 5], r() * 6.28);
+    var t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    return t;
+  }
+  function startGL() {
+    try {
+      var opts = { antialias: true, alpha: false, depth: true, powerPreference: 'high-performance' };
+      gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
+      if (!gl) return false;
+      PR.cel = program(SH.celV, SH.celF, ['aP', 'aN', 'aO', 'aC']);
+      PR.sky = program(SH.skyV, SH.skyF, ['aP']);
+      PR.sea = program(SH.seaV, SH.seaF, ['aP']);
+      PR.fx = program(SH.fxV, SH.fxF, ['aP', 'aC', 'aU']);
+      PR.flat = program(SH.flatV, SH.flatF, ['aP', 'aC']);
+      QUAD = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, QUAD);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      SPRBUF = gl.createBuffer(); FLATBUF = gl.createBuffer();
+      TEXF = floralTexture();
+      return true;
+    } catch (e) {
+      gl = null;
+      return false;
+    }
+  }
+
+  // ======================= the world =======================
+  var MOODS = {
+    past: mood(0x4d3f8f, 0xffa565, [0.62, 0.16, -0.77], 0xffb070, 0xffe4c4, 0x8f6ca2, 0xf5b187, 0.0016, 0, 0xffe2c6, 0xd495ab, 0xffcf9a),
+    present: mood(0x2a73de, 0xbfe4ff, [0.3, 0.78, -0.55], 0xfff3d2, 0xffffff, 0x9fb3de, 0xd2ebff, 0.0013, 0, 0xffffff, 0xb6c6ea, 0xffffff),
+    future: mood(0x1a2256, 0xff9fae, [-0.55, 0.07, -0.83], 0xffb09a, 0xffdede, 0x7672b2, 0xeaa6b8, 0.0016, 0.9, 0xffd8e2, 0x968bc8, 0xffc4d2)
+  };
+  function mood(zen, hor, sun, sunC, light, shade, fog, fogD, stars, hi, lo, rimC) {
+    return { zen: rgb(zen), hor: rgb(hor), sun: vnorm(sun), sunC: rgb(sunC), light: rgb(light), shade: rgb(shade), fog: rgb(fog),
+      fogD: fogD, stars: stars, hi: rgb(hi), lo: rgb(lo), rim: rgb(rimC) };
+  }
+  var MKEYS = ['zen', 'hor', 'sun', 'sunC', 'light', 'shade', 'fog', 'hi', 'lo', 'rim'];
+  function moodMix(a, b, t) {
+    var o = { fogD: lerp(a.fogD, b.fogD, t), stars: lerp(a.stars, b.stars, t) };
+    MKEYS.forEach(function (k) { o[k] = vlerp(a[k], b[k], t); });
+    return o;
+  }
+  // A scene's own sky (a storm, say) pulls the sky, light and fog toward one colour.
+  function tinted(m, col, amt) {
+    if (!col || !amt) return m;
+    var o = moodMix(m, m, 0);
+    ['zen', 'hor', 'fog', 'hi', 'lo', 'sunC'].forEach(function (k) { o[k] = vlerp(m[k], col, amt); });
+    o.light = vlerp(m.light, vadd(vscale(col, 0.5), [0.45, 0.45, 0.45]), amt);
+    o.stars = m.stars * (1 - amt);
+    return o;
+  }
+  var firstPart = chapters.length && chapters[0].part ? chapters[0].part : 'present';
+  var lastPart = chapters.length && chapters[chapters.length - 1].part ? chapters[chapters.length - 1].part : 'present';
+  function moodKey(at) { return typeof at === 'number' ? (chapters[at].part || 'present') : at === 'start' ? firstPart : lastPart; }
+
+  var LOC = {}, ISL = [], SUMMIT = null, CLOUDS = null, DECOR = null, SC = {};
+  var CENTER = [0, 34, 0];
+  function sceneFor(nm, special) {
+    var key = 's:' + (special ? '*' : '') + nm;
+    if (SC[key]) return SC[key];
+    var b = new Builder(hashStr(nm) || 1);
+    try {
+      if (special) special(b);
+      else if (has(SCENES, nm)) SCENES[nm](b);
+      else placeholderScene(b, nm);
+    } catch (e) {
+      b = new Builder(hashStr(nm) || 1);
+      placeholderScene(b, nm);
+    }
+    islandBase(b);
+    return (SC[key] = { mesh: upload(b.v), halos: b.halos, info: b.info,
+      anims: b.anims.map(function (a) { return { mesh: upload(a.b.v), halos: a.b.halos, base: a.base, fn: a.fn }; }) });
+  }
+  function island(sc, P, yaw) {
+    var M = mcompose(mat(), P[0], P[1], P[2], 0, yaw, 0, 1, 1, 1);
+    return { sc: sc, P: P, M: M, halos: sc.halos.map(function (h) { return { p: mpoint(M, h.p[0], h.p[1], h.p[2]), s: h.s, c: h.c, a: h.a, beam: h.beam }; }),
+      poses: sc.anims.map(function () { return { M: mat() }; }) };
+  }
+  // A place the two stop: its frame (spot), where each stands and faces, and its camera shots.
+  function makeLoc(spotM, yaw, key, wideEye, wideAt, isl, sky, skyAmt, groundY) {
+    function P(x, y, z) { return mpoint(spotM, x, y, z); }
+    var L = { key: key, M: spotM, yaw: yaw, isl: isl, sky: sky, skyAmt: skyAmt || 0, ground: groundY,
+      g: P(-0.8, 0.3, 0), gy: yaw + 38 * DEG, p: P(0.8, 0.3, 0.15), py: yaw - 50 * DEG, shots: {} };
+    L.shots.wide = [wideEye || P(4.2, 2.6, 8.4), wideAt || P(0, 1.4, -0.6)];
+    L.shots.wide2 = [P(-4.4, 2.3, 7.4), P(0.3, 1.5, -0.8)];
+    L.shots.close = [P(1.8, 1.75, 4.2), P(-0.35, 1.35, 0)];
+    L.shots.low = [P(-2.0, 0.85, 4.5), P(-0.2, 1.9, 0)];
+    return L;
+  }
+  function buildWorld() {
+    var n = chapters.length, step = n > 1 ? Math.min(0.62, 5.3 / n) : 0, a0 = 0.35, i;
+    var sa = a0 - 0.7, start = [Math.cos(sa) * 380, 140, Math.sin(sa) * 380];
+    var prev = start;
+    chapters.forEach(function (c, i) {
+      var a = a0 + i * step, r = 245 - i * 6, P = [Math.cos(a) * r, Math.sin(i * 2.1 + 0.5) * 12, Math.sin(a) * r];
+      var yaw = Math.atan2(prev[0] - P[0], prev[2] - P[2]);
+      var isl = island(sceneFor(c.scene), P, yaw), I = isl.sc.info;
+      ISL.push(isl);
+      var spot = mmul(mat(), isl.M, mcompose(mat(), I.land[0], I.land[1], I.land[2], 0, I.land[3] * DEG, 0, 1, 1, 1));
+      LOC[i] = makeLoc(spot, yaw + I.land[3] * DEG, i, I.eye ? mpoint(isl.M, I.eye[0], I.eye[1], I.eye[2]) : null,
+        I.at ? mpoint(isl.M, I.at[0], I.at[1], I.at[2]) : null, isl, I.sky, I.skyAmt, P[1] + I.land[1]);
+      prev = P;
+    });
+    // start: high above, looking in over the whole universe
+    var sy = Math.atan2(-start[0], -start[2]);
+    LOC.start = makeLoc(mcompose(mat(), start[0], start[1], start[2], 0, sy, 0, 1, 1, 1), sy, 'start');
+    LOC.start.shots.start = [mpoint(LOC.start.M, 2.2, 5.5, -9.5), mpoint(LOC.start.M, 0, -110, 330)];
+    LOC.start.g = mpoint(LOC.start.M, -0.8, 0, 0); LOC.start.p = mpoint(LOC.start.M, 0.8, 0.1, 0.2);
+    LOC.start.gy = LOC.start.py = sy;
+    // roles and traits: open sky between the last chapter and the middle
+    var last = n ? ISL[n - 1].P : start;
+    [['roles', 0.38, 26], ['traits', 0.7, 32]].forEach(function (q) {
+      var P = vadd(vlerp(last, CENTER, q[1]), [0, q[2], 0]), y = Math.atan2(P[0], P[2]);
+      LOC[q[0]] = makeLoc(mcompose(mat(), P[0], P[1], P[2], 0, y, 0, 1, 1, 1), y, q[0]);
+    });
+    // end: the summit, then the camera pulls back over everything
+    var ey = Math.atan2(last[0], last[2]);
+    SUMMIT = island(sceneFor('summit', summitScene), CENTER, ey);
+    var SI = SUMMIT.sc.info, spotE = mmul(mat(), SUMMIT.M, mcompose(mat(), SI.land[0], SI.land[1], SI.land[2], 0, 0, 0, 1, 1, 1));
+    LOC.end = makeLoc(spotE, ey, 'end', null, null, SUMMIT, null, 0, CENTER[1]);
+    LOC.end.shots.over = [vadd(CENTER, [Math.sin(ey) * 360, 300, Math.cos(ey) * 360]), vadd(CENTER, [0, -40, 0])];
+    // clouds and small floating rocks
+    var b = new Builder(777), r = b.r;
+    b.out = 0;
+    function puff(x, y, z, R) {
+      b.ball(x, y, z, R, 0xffffff, { sy: 0.72, seg: 12, rings: 7, e: 0.12, o: 0 });
+      for (var k = 0, m = 5 + Math.floor(r() * 4); k < m; k++) {
+        var a = r() * 2 * Math.PI, d = R * (0.55 + r() * 0.7);
+        b.ball(x + Math.cos(a) * d, y + R * (r() * 0.4 - 0.1), z + Math.sin(a) * d, R * (0.42 + r() * 0.4), 0xffffff, { sy: 0.82, seg: 10, rings: 6, e: 0.12, o: 0 });
+      }
+    }
+    for (i = 0; i < 44; i++) { var a = r() * 2 * Math.PI, d = 60 + r() * 900; puff(Math.cos(a) * d, -64 + r() * 8, Math.sin(a) * d, 16 + r() * 26); }
+    for (i = 0; i < 12; i++) { a = r() * 2 * Math.PI; d = 150 + r() * 130; puff(Math.cos(a) * d, -38 - r() * 10, Math.sin(a) * d, 7 + r() * 8); }
+    for (i = 0; i < 12; i++) { a = r() * 2 * Math.PI; d = 560 + r() * 700; puff(Math.cos(a) * d, 30 + r() * 90, Math.sin(a) * d, 32 + r() * 40); }
+    CLOUDS = upload(b.v);
+    b = new Builder(4321); r = b.r;
+    for (i = 0; i < 18; i++) {
+      a = r() * 2 * Math.PI; d = i % 2 ? 90 + r() * 70 : 320 + r() * 280;
+      b.push(Math.cos(a) * d, -26 + r() * 60, Math.sin(a) * d, r() * 360, 1.4 + r() * 3.5);
+      b.cyl(0, -0.35, 0, 1, 0.35, 0x7cc86a, { seg: 7, flat: true });
+      b.rock(0, -0.95, 0, 0.95, 0x9a7b5f, { sy: 1.3, sx: 1.05 });
+      if (i % 3 === 0) { b.cyl(0.2, 0, 0.1, 0.07, 0.5, 0x7a4f32, { seg: 5 }); b.cone(0.2, 0.4, 0.1, 0.36, 0.9, 0x3f9a45, { seg: 7 }); }
+      b.pop();
+    }
+    DECOR = upload(b.v);
+  }
+
+  // ======================= the moment: characters, camera, effects =======================
+  var guide = null, player = null, T = 0, cur = 0, flight = null, arrivedT = -10, stepT = 0;
+  var cam = { e: [0, 0, 0], a: [0, 0, -1], shake: 0, flash: 0, shift: 0.1, cover: 0.12, coverT: 0 };
+  var moodNow = null, parts = [], speedT = 0, SPEED = [], sceneFlash = 0, flashNow = 0;
+
+  function shotFor(i) {
+    var s = steps[i], L = LOC[s.at];
+    if (s.kind === 'start' || s.kind === 'none') return L.shots.start;
+    if (s.kind === 'end') return flight || T - arrivedT < 1.3 ? L.shots.close : L.shots.over;
+    if (s.kind === 'req') return s.i % 2 ? L.shots.close : L.shots.low;
+    if (s.kind === 'story') return s.i === 0 ? L.shots.wide : s.i % 2 ? L.shots.close : L.shots.wide2;
+    return L.shots.close;
+  }
+  function targetMood(L) { return tinted(MOODS[moodKey(L.key)], L.sky, L.skyAmt); }
+  function bez(P, u) {
+    var v = 1 - u;
+    return [0, 1, 2].map(function (k) { return v * v * v * P[0][k] + 3 * v * v * u * P[1][k] + 3 * v * u * u * P[2][k] + u * u * u * P[3][k]; });
+  }
+  function bezD(P, u) {
+    var v = 1 - u;
+    return [0, 1, 2].map(function (k) { return 3 * v * v * (P[1][k] - P[0][k]) + 6 * v * u * (P[2][k] - P[1][k]) + 3 * u * u * (P[3][k] - P[2][k]); });
+  }
+  function easeIO(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+  function emit(p) { if (parts.length < 500) parts.push(p); }
+  function burst(pos, onGround) {
+    var i, a;
+    cam.flash = reduce ? 0.2 : 0.85;
+    if (!reduce) cam.shake = 0.42;
+    for (i = 0; i < 26; i++) {
+      a = Math.random() * 2 * Math.PI;
+      var up = Math.random() * 2 - 0.4, sp = 5 + Math.random() * 7;
+      emit({ p: pos.slice(), v: [Math.cos(a) * sp, up * sp * 0.6, Math.sin(a) * sp], life: 0.45, max: 0.45, s0: 0.05, s1: 0.03, len: 0.5, c: [1, 0.95, 0.7], a: 1, k: 4, add: 1, drag: 3, g: -4 });
+    }
+    if (onGround == null) return;
+    var g = [pos[0], onGround + 0.04, pos[2]];
+    emit({ p: g, v: [0, 0, 0], life: 0.7, max: 0.7, s0: 0.6, s1: 6.5, c: [1, 0.93, 0.8], a: 0.9, k: 3, add: 0, flat: 1 });
+    for (i = 0; i < 18; i++) {
+      a = i / 18 * 2 * Math.PI;
+      emit({ p: [g[0] + Math.cos(a) * 0.6, g[1] + 0.2, g[2] + Math.sin(a) * 0.6], v: [Math.cos(a) * 6, 0.6 + Math.random(), Math.sin(a) * 6],
+        life: 0.9, max: 0.9, s0: 0.35, s1: 1.1, c: [0.93, 0.86, 0.74], a: 0.85, k: 2, add: 0, drag: 4, g: 0 });
+    }
+  }
+  function summonFx() {
+    var h = guide.hand();
+    for (var i = 0; i < 24; i++) {
+      var a = Math.random() * 2 * Math.PI, b = Math.random() * 2 - 1, sp = 2 + Math.random() * 3;
+      emit({ p: h.slice(), v: [Math.cos(a) * sp, b * sp + 1, Math.sin(a) * sp], life: 0.6, max: 0.6, s0: 0.04, s1: 0.02, len: 0.3, c: [0.6, 0.95, 1], a: 1, k: 4, add: 1, drag: 2, g: 0 });
+    }
+    emit({ p: h.slice(), v: [0, 0, 0], life: 0.5, max: 0.5, s0: 0.4, s1: 2.4, c: [0.6, 0.95, 1], a: 0.9, k: 0, add: 1 });
+  }
+
+  function beginFlight(from, to) {
+    var B = LOC[steps[to].at];
+    var P0 = guide.pos.slice(), P3 = B.g.slice(), d = vlen(vsub(P3, P0)), dir = vnorm(vsub(P3, P0));
+    var front = vnorm(mdir(B.M, 0, 0, 1));
+    var P1 = vadd(vadd(P0, [0, Math.min(16, d * 0.12) + 2, 0]), vscale(dir, d * 0.28));
+    var P2 = vadd(vadd(P3, [0, Math.min(12, d * 0.08) + 3, 0]), vscale(front, Math.min(d * 0.32, 34)));
+    flight = { from: from, to: to, B: B, P: [P0, P1, P2, P3], t0: T, dur: reduce ? 1.0 : clamp(2.6 + d / 160, 3.0, 4.0),
+      e0: cam.e.slice(), a0: cam.a.slice(), p0: player.pos.slice(), m0: moodNow, done: false };
+    document.body.classList.add('flying');
+    layer.classList.add('away');
+    chapterCard.classList.add('away');
+    updateControls();
+  }
+  function land() {
+    var f = flight;
+    flight = null;
+    document.body.classList.remove('flying');
+    arrivedT = T;
+    guide.pos = f.B.g.slice(); player.pos = f.B.p.slice();
+    var s = shotFor(f.to);
+    cam.e = s[0].slice(); cam.a = s[1].slice();
+    moodNow = targetMood(f.B);
+    if (!reduce) burst(vadd(guide.pos, [0, 0.9, 0]), f.B.ground);
+    show(f.to, f.from);
+  }
+
+  function updateChars(dt) {
+    var s = steps[cur], L = LOC[s.at], tg, tp;
+    if (flight) {
+      var f = flight, t = clamp((T - f.t0) / f.dur, 0, 1), u = reduce ? (t < 0.5 ? 0 : 1) : easeIO(t);
+      var P = bez(f.P, u), D = vnorm(bezD(f.P, Math.min(u, 0.995))), side = vnorm(vcross(D, [0, 1, 0]));
+      if (reduce) P = t < 0.5 ? f.P[0] : f.P[3];
+      guide.pos = P;
+      var pp = vadd(vadd(P, vscale(side, 1.4)), vadd(vscale(D, -1.1), [0, 0.25 + Math.sin(T * 2.3) * 0.12, 0]));
+      if (reduce) pp = t < 0.5 ? f.p0 : f.B.p;
+      else pp = vlerp(vlerp(f.p0, pp, smooth(t / 0.15)), f.B.p, smooth((t - 0.8) / 0.2));
+      player.pos = pp;
+      var fly = !reduce && t > 0.04 && t < 0.86, yawD = Math.atan2(D[0], D[2]);
+      var yk = damp(t > 0.8 ? 7 : 5, dt);
+      guide.yaw = angLerp(guide.yaw, t > 0.8 ? f.B.gy : yawD, yk);
+      player.yaw = angLerp(player.yaw, t > 0.8 ? f.B.py : yawD, yk);
+      guide.tilt = player.tilt = fly ? -Math.asin(clamp(D[1], -0.8, 0.8)) * 0.8 : 0;
+      tg = tp = fly ? 'fly' : t >= 0.86 ? 'brake' : 'hover';
+      guide.fly = player.fly = fly ? 1 : 0;
+      guide.dir = player.dir = D;
+    } else {
+      guide.pos = L.g.slice(); player.pos = L.p.slice();
+      guide.tilt = player.tilt = 0; guide.fly = player.fly = 0;
+      var since = T - arrivedT, st = T - stepT;
+      guide.yaw = angLerp(guide.yaw, L.gy, damp(6, dt));
+      player.yaw = angLerp(player.yaw, L.py, damp(6, dt));
+      tg = 'hover'; tp = 'listen';
+      if (since > 0.45) {
+        if (s.kind === 'story' || s.kind === 'roles' || s.kind === 'traits') tg = 'talk';
+        if (s.kind === 'req') tg = st < 1.6 ? 'summon' : 'talk';
+      }
+      if (s.kind === 'start' || s.kind === 'none' || s.kind === 'end') tp = 'hover';
+    }
+    [guide, player].forEach(function (c, k) {
+      c.pose(POSES[k ? tp : tg](T, c.look.seed), dt);
+      if (!flight) c.pos = vadd(c.pos, [0, Math.sin(T * 1.9 + c.look.seed) * 0.05, 0]);
+      c.aura = lerp(c.aura, c.fly ? (k ? 0.6 : 1) : (k ? 0 : 0.45), damp(4, dt));
+      c.place();
+    });
+  }
+  function updateCamera(dt) {
+    var e, a;
+    if (flight) {
+      var f = flight, t = clamp((T - f.t0) / f.dur, 0, 1), s = shotFor(f.to);
+      if (reduce) { e = t < 0.5 ? f.e0 : s[0]; a = t < 0.5 ? f.a0 : s[1]; }
+      else {
+        var u = easeIO(t), P = guide.pos, D = vnorm(bezD(f.P, Math.min(u, 0.995))), side = vnorm(vcross(D, [0, 1, 0]));
+        var ce = vadd(vadd(P, vscale(D, -7.5)), vadd([0, 2.4, 0], vscale(side, Math.sin(t * Math.PI) * 3.5))), ca = vadd(P, vscale(D, 5));
+        var w0 = smooth(t / 0.2), w1 = smooth((t - 0.74) / 0.26);
+        e = vlerp(vlerp(f.e0, ce, w0), s[0], w1); a = vlerp(vlerp(f.a0, ca, w0), s[1], w1);
+      }
+      cam.e = e; cam.a = a;
+    } else {
+      var sh = shotFor(cur), k = steps[cur].kind === 'end' && T - arrivedT > 1.3 ? 0.9 : 2.4;
+      var drift = [Math.sin(T * 0.31) * 0.25, Math.sin(T * 0.23) * 0.12, 0];
+      cam.e = vlerp(cam.e, vadd(sh[0], drift), damp(k, dt));
+      cam.a = vlerp(cam.a, sh[1], damp(k, dt));
+    }
+    // how much of the screen the text covers, so the picture can sit above it
+    cam.coverT -= dt;
+    if (cam.coverT <= 0) {
+      cam.coverT = 0.25;
+      var box = layer.firstChild, H = window.innerHeight || 1;
+      var bx = box && !flight && !layer.classList.contains('mid') ? box.getBoundingClientRect() : null;
+      cam.cover = !bx ? 0.06 : layer.classList.contains('high') ? -clamp(bx.bottom / H, 0, 0.6) * 0.8 : clamp(1 - bx.top / H, 0.08, 0.62);
+    }
+    cam.shift = lerp(cam.shift, cam.cover * 0.85, damp(3, dt));
+    cam.shake = Math.max(0, cam.shake - dt);
+    cam.flash = Math.max(0, cam.flash - dt * 3.2);
+  }
+  function updateMood(dt) {
+    var tgt;
+    if (flight) {
+      var t = clamp((T - flight.t0) / flight.dur, 0, 1);
+      tgt = moodMix(flight.m0, targetMood(flight.B), smooth((t - 0.15) / 0.7));
+      moodNow = tgt;
+    } else moodNow = moodMix(moodNow, targetMood(LOC[steps[cur].at]), damp(2.5, dt));
+  }
+  function updateParts(dt) {
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var p = parts[i];
+      p.life -= dt;
+      if (p.life <= 0) { parts.splice(i, 1); continue; }
+      var dr = Math.max(0, 1 - (p.drag || 0) * dt);
+      p.v = [p.v[0] * dr, p.v[1] * dr + (p.g || 0) * dt, p.v[2] * dr];
+      p.p = vadd(p.p, vscale(p.v, dt));
+    }
+    // sparks rising from the auras
+    [guide, player].forEach(function (c, k) {
+      var rate = (c.fly ? 36 : 7) * c.aura * (k ? 0.5 : 1);
+      if (Math.random() < rate * dt) {
+        var ax = c.fly ? vscale(c.dir, -1) : [0, 1, 0], o = mpoint(c.R, (Math.random() - 0.5) * 0.7, (Math.random() - 0.3) * 1.2, (Math.random() - 0.5) * 0.5);
+        emit({ p: o, v: vadd(vscale(ax, 2.5 + Math.random() * 2.5), [0, 0.3, 0]), life: 0.5, max: 0.5, s0: 0.035, s1: 0.02, len: 0.35,
+          c: c.look.aura, a: 0.9, k: 4, add: 1, drag: 1 });
+      }
+    });
+  }
+
+  // ---------- drawing ----------
+  var PM = new Float32Array(16), VM = new Float32Array(16), VP = new Float32Array(16), ID = mat(), TM = mat();
+  var SPR = { a: new Float32Array(1400 * 66), n: 0 }, SPA = { a: new Float32Array(500 * 66), n: 0 };
+  var CORN = [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1];
+  function spr(L, c, U, V, col, a, k, seed) {
+    if ((L.n + 1) * 66 > L.a.length || a <= 0.003) return;
+    var o = L.n * 66, A = L.a;
+    for (var i = 0; i < 6; i++) {
+      var x = CORN[i * 2], y = CORN[i * 2 + 1];
+      A[o++] = c[0] + U[0] * x + V[0] * y; A[o++] = c[1] + U[1] * x + V[1] * y; A[o++] = c[2] + U[2] * x + V[2] * y;
+      A[o++] = col[0]; A[o++] = col[1]; A[o++] = col[2]; A[o++] = a;
+      A[o++] = x; A[o++] = y; A[o++] = k; A[o++] = seed;
+    }
+    L.n++;
+  }
+  function drawMesh(U, mesh, M, ow) {
+    if (!mesh) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buf);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 52, 0);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 52, 12);
+    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 52, 24);
+    gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 52, 36);
+    gl.uniformMatrix4fv(U.uM, false, M);
+    gl.uniform1f(U.uOut, 0);
+    gl.cullFace(gl.BACK);
+    gl.drawArrays(gl.TRIANGLES, 0, mesh.n);
+    if (ow > 0) {
+      gl.uniform1f(U.uOut, ow);
+      gl.cullFace(gl.FRONT);
+      gl.drawArrays(gl.TRIANGLES, 0, mesh.n);
+    }
+  }
+  function drawIsland(U, isl, eye) {
+    if (vlen(vsub(isl.P, eye)) > 1500) return;
+    drawMesh(U, isl.sc.mesh, isl.M, 0.0019);
+    var near = vlen(vsub(isl.P, eye)) < 260;
+    isl.sc.anims.forEach(function (a, k) {
+      var m = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, s: 1, v: 1, f: 0 }, st = isl.poses[k];
+      try { a.fn(T, m); } catch (e) { m.v = 0; }
+      st.v = m.v;
+      if (near && m.f > 0) sceneFlash = Math.max(sceneFlash, clamp(m.f, 0, 1) * (1 - vlen(vsub(isl.P, eye)) / 260));
+      if (m.v <= 0 || !near) return;
+      mcompose(TM, m.x, m.y, m.z, m.rx * DEG, m.ry * DEG, m.rz * DEG, Math.max(m.s, 0.001), Math.max(m.s, 0.001), Math.max(m.s, 0.001));
+      mmul(st.M, mmul(st.M, isl.M, a.base), TM);
+      drawMesh(U, a.mesh, st.M, 0.0019);
+      st.s = m.s;
+    });
+  }
+  function haloSprites(isl, R, Up, eye) {
+    var d = vlen(vsub(isl.P, eye));
+    if (d > 700) return;
+    var fade = 1 - smooth((d - 400) / 300);
+    isl.halos.forEach(function (h, i) { haloSpr(h, h.p, 1, R, Up, fade * (0.85 + 0.15 * Math.sin(T * 2.6 + i))); });
+    if (d > 260) return;
+    isl.sc.anims.forEach(function (a, k) {
+      var st = isl.poses[k];
+      if (!(st.v > 0)) return;
+      a.halos.forEach(function (h) { haloSpr(h, mpoint(st.M, h.p[0], h.p[1], h.p[2]), st.v * Math.min(1, st.s || 1), R, Up, fade); });
+    });
+  }
+  function haloSpr(h, p, k, R, Up, fade) {
+    if (h.beam) spr(SPR, p, vscale(vnorm(vcross([0, 1, 0], vsub(cam.e, p))), h.s), [0, h.beam, 0], h.c, h.a * k * fade, 5, 0);
+    else spr(SPR, p, vscale(R, h.s), vscale(Up, h.s), h.c, h.a * k * fade * 0.8, 0, 0);
+  }
+  function auraSprites(c, eye) {
+    var I = c.aura;
+    if (I < 0.03) return;
+    var ctr = mpoint(c.R, 0, 0.32, 0), ax = c.fly ? vnorm(vadd(vscale(c.dir, -1), [0, 0.25, 0])) : [0, 1, 0];
+    var vd = vnorm(vsub(eye, ctr)), U = vnorm(vcross(ax, vd));
+    var h = (1.25 + 0.45 * c.fly) * (0.85 + 0.15 * I), w = (0.72 + 0.34 * c.fly);
+    var back = vsub(ctr, vscale(vd, 0.45)), col = c.look.aura, sd = c.look.seed;
+    spr(SPR, back, vscale(U, w), vscale(ax, h), col, 0.55 * I, 1, sd);
+    spr(SPR, vadd(back, vscale(ax, 0.12)), vscale(U, w * 0.82), vscale(ax, h * 1.08), col, 0.45 * I, 1, sd + 3.7);
+    spr(SPR, vadd(ctr, vscale(vd, 0.35)), vscale(U, w * 0.9), vscale(ax, h * 0.95), col, 0.14 * I, 1, sd + 8.1);
+    spr(SPR, ctr, vscale(U, 1.5), vscale(vcross(vd, U), 1.5), col, 0.2 * I * c.fly, 0, 0);
+  }
+  function partSprites(R, Up, eye) {
+    parts.forEach(function (p) {
+      var f = p.life / p.max, s = lerp(p.s1, p.s0, f), a = p.a * (p.add ? f : smooth(f * 1.6)), L = p.add ? SPR : SPA;
+      if (p.flat) spr(L, p.p, [s, 0, 0], [0, 0, s], p.c, a, p.k, 0);
+      else if (p.k === 4) {
+        var dir = vnorm(p.v), W = vnorm(vcross(dir, vsub(eye, p.p)));
+        spr(L, p.p, vscale(W, s), vscale(dir, p.len * (0.4 + f)), p.c, a, 4, 0);
+      } else spr(L, p.p, vscale(R, s), vscale(Up, s), p.c, a, p.k, 0);
+    });
+  }
+  function drawSprites(L, additive) {
+    if (!L.n) return;
+    gl.blendFunc(gl.ONE, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindBuffer(gl.ARRAY_BUFFER, SPRBUF);
+    gl.bufferData(gl.ARRAY_BUFFER, L.a.subarray(0, L.n * 66), gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 44, 0);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 44, 12);
+    gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 44, 28);
+    gl.drawArrays(gl.TRIANGLES, 0, L.n * 6);
+  }
+  function flatQuads(list) {
+    if (!list.length) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, FLATBUF);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(list), gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 24, 8);
+    gl.drawArrays(gl.TRIANGLES, 0, list.length / 6);
+  }
+  function render() {
+    var W = canvas.width, H = canvas.height, asp = W / H, M = moodNow, i;
+    gl.viewport(0, 0, W, H);
+    var fovy = clamp(2 * Math.atan(Math.tan(0.5) / asp), 0.78, 1.3);
+    var eye = cam.e, at = cam.a;
+    if (asp < 1) eye = vadd(at, vscale(vsub(eye, at), 1 + (1 - asp) * 0.55));
+    if (cam.shake > 0) {
+      var sk = cam.shake * 0.35;
+      eye = vadd(eye, [(Math.random() - 0.5) * sk, (Math.random() - 0.5) * sk, (Math.random() - 0.5) * sk]);
+    }
+    persp(PM, fovy, asp, 0.3, 7000, cam.shift);
+    lookAt(VM, eye, at, [0, 1, 0]);
+    mmul(VP, PM, VM);
+    var R = [VM[0], VM[4], VM[8]], Up = [VM[1], VM[5], VM[9]], Fw = [-VM[2], -VM[6], -VM[10]];
+    var wide = smooth((eye[1] - 40) / 160), fogD = M.fogD * (1 - 0.72 * wide);
+    var LD = vnorm([M.sun[0], Math.max(M.sun[1], 0.5), M.sun[2]]);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    // sky
+    gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
+    var U = use(PR.sky);
+    gl.bindBuffer(gl.ARRAY_BUFFER, QUAD);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
+    gl.uniform3fv(U.uF, Fw); gl.uniform3fv(U.uR, R); gl.uniform3fv(U.uU, Up);
+    gl.uniform3f(U.uTS, Math.tan(fovy / 2) * asp, Math.tan(fovy / 2), cam.shift);
+    gl.uniform3fv(U.uZen, M.zen); gl.uniform3fv(U.uHor, M.hor); gl.uniform3fv(U.uSunD, M.sun); gl.uniform3fv(U.uSunC, M.sunC);
+    gl.uniform1f(U.uStars, M.stars); gl.uniform1f(U.uT, T);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    // the sea of clouds
+    gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+    U = use(PR.sea);
+    gl.bindBuffer(gl.ARRAY_BUFFER, QUAD);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
+    gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniform3fv(U.uCam, eye); gl.uniform1f(U.uY, -62);
+    gl.uniform3fv(U.uHi, M.hi); gl.uniform3fv(U.uLo, M.lo); gl.uniform3fv(U.uFog, M.fog); gl.uniform1f(U.uFD, fogD); gl.uniform1f(U.uT, T);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    // solid things
+    gl.enable(gl.CULL_FACE);
+    U = use(PR.cel);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, TEXF); gl.uniform1i(U.uTex, 0);
+    gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniform3fv(U.uCam, eye); gl.uniform3fv(U.uLD, LD);
+    gl.uniform3fv(U.uLC, M.light); gl.uniform3fv(U.uSC, M.shade); gl.uniform3fv(U.uFog, M.fog); gl.uniform1f(U.uFD, fogD);
+    gl.uniform3fv(U.uRC, M.rim); gl.uniform3f(U.uOC, 0.08, 0.06, 0.12); gl.uniform1f(U.uFlash, 0);
+    gl.uniform1f(U.uRim, 0); gl.uniform1f(U.uSpec, 0);
+    gl.uniform3fv(U.uSC, vlerp(M.shade, M.light, 0.35));
+    drawMesh(U, CLOUDS, ID, 0);
+    gl.uniform3fv(U.uSC, M.shade);
+    gl.uniform1f(U.uRim, 0.6);
+    drawMesh(U, DECOR, ID, 0.0019);
+    flashNow = sceneFlash; sceneFlash = 0;
+    gl.uniform1f(U.uFlash, flashNow * 0.35);
+    for (i = 0; i < ISL.length; i++) drawIsland(U, ISL[i], eye);
+    drawIsland(U, SUMMIT, eye);
+    gl.uniform1f(U.uRim, 1); gl.uniform1f(U.uSpec, 1); gl.uniform1f(U.uFlash, cam.flash * 0.12 + flashNow * 0.3);
+    [guide, player].forEach(function (c) { c.nodes.forEach(function (n) { drawMesh(U, n.mesh, n.W, 0.0036); }); });
+    // light: shadows, dust, glows, auras, sparks
+    gl.disable(gl.CULL_FACE); gl.depthMask(false); gl.enable(gl.BLEND);
+    SPR.n = SPA.n = 0;
+    if (!flight) {
+      var L = LOC[steps[cur].at];
+      if (L.ground != null) [guide, player].forEach(function (c) { spr(SPA, [c.pos[0], L.ground + 0.03, c.pos[2]], [0.42, 0, 0], [0, 0, 0.3], [0.1, 0.06, 0.16], 0.3, 2, 0); });
+    }
+    for (i = 0; i < ISL.length; i++) haloSprites(ISL[i], R, Up, eye);
+    haloSprites(SUMMIT, R, Up, eye);
+    auraSprites(guide, eye); auraSprites(player, eye);
+    partSprites(R, Up, eye);
+    U = use(PR.fx);
+    gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniform1f(U.uT, T);
+    drawSprites(SPA, false);
+    drawSprites(SPR, true);
+    // on the screen: speed lines, flash, fade
+    gl.disable(gl.DEPTH_TEST);
+    var q = [];
+    function tri(x1, y1, x2, y2, x3, y3, c) { q.push(x1, y1, c[0], c[1], c[2], c[3], x2, y2, c[0], c[1], c[2], c[3], x3, y3, c[0], c[1], c[2], c[3]); }
+    function rect(c) { tri(-1, -1, 1, -1, 1, 1, c); tri(-1, -1, 1, 1, -1, 1, c); }
+    var ft = flight ? clamp((T - flight.t0) / flight.dur, 0, 1) : 0;
+    if (flight && !reduce) {
+      var inten = Math.pow(Math.sin(Math.PI * ft), 0.8);
+      if (T - speedT > 0.05) {
+        speedT = T; SPEED = [];
+        for (i = 0; i < 34; i++) SPEED.push([Math.random() * 2 * Math.PI, 0.55 + Math.random() * 0.4, 0.3 + Math.random() * 0.6, 0.004 + Math.random() * 0.01]);
+      }
+      SPEED.forEach(function (l) {
+        var cx = Math.cos(l[0]), cy = Math.sin(l[0]), px = -cy / asp, py = cx, r0 = l[1], r1 = l[1] + l[2], w = l[3] * 2;
+        tri(cx * r0 / asp * 1.4, cy * r0 * 1.4, (cx * r1 * 1.4 + px * w) / 1, cy * r1 * 1.4 + py * w, cx * r1 * 1.4 - px * w, cy * r1 * 1.4 - py * w, [1, 1, 1, 0.32 * inten]);
+      });
+    }
+    if (cam.flash > 0) rect([1, 0.98, 0.92, Math.min(1, cam.flash) * (reduce ? 0.3 : 0.7)]);
+    if (flight && reduce) rect([M.fog[0], M.fog[1], M.fog[2], 1 - Math.abs(ft * 2 - 1)]);
+    if (q.length) {
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      use(PR.flat);
+      flatQuads(q);
+    }
+  }
+
+  // ---------- the loop ----------
+  var raf = 0, last = 0, quality = 1, slow = 0, frames = 0;
+  function resize() {
+    if (!gl) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2) * quality;
+    var w = Math.max(1, Math.round((window.innerWidth || 1) * dpr)), h = Math.max(1, Math.round((window.innerHeight || 1) * dpr));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  }
+  function frame(now) {
+    raf = 0;
+    if (!gl) return;
+    var dt = last ? Math.min(0.1, (now - last) / 1000) : 0.016;
+    last = now;
+    T += dt;
+    // on a slow machine, draw fewer pixels (never below one per CSS pixel)
+    frames++;
+    if (dt > 0.024) slow++;
+    if (frames >= 90) {
+      if (slow > 45 && quality * Math.min(window.devicePixelRatio || 1, 2) > 1.01) { quality = Math.max(quality - 0.2, 1 / Math.min(window.devicePixelRatio || 1, 2)); resize(); }
+      frames = slow = 0;
+    }
+    if (flight && T - flight.t0 >= flight.dur) land();
+    updateChars(dt);
+    updateCamera(dt);
+    updateMood(dt);
+    updateParts(dt);
+    render();
+    loop();
+  }
+  function loop() { if (!raf && gl && !document.hidden) raf = requestAnimationFrame(frame); }
+  function toPlain() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0; gl = null; flight = null;
+    document.body.classList.add('plain');
+    document.body.classList.remove('flying');
+    show(cur, null);
+  }
+
+  // ======================= the flow =======================
+  var btnNext = $('btn-next'), btnBack = $('btn-back'), stepEl = $('step'), nextText = $('next-text');
+  function updateControls() {
+    var none = steps[0].kind === 'none';
+    btnBack.disabled = none || (cur === 0 && !flight);
+    btnNext.disabled = none || (cur === steps.length - 1 && !flight);
+    nextText.textContent = flight ? 'Skip →' : 'Next →';
+    stepEl.textContent = none ? '' : (cur + 1) + ' / ' + steps.length;
+  }
+  function restart(node, cls) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
+  function show(i, from) {
+    var s = steps[i], moved = from == null || steps[from].at !== s.at;
+    cur = i;
+    stepT = T;
+    renderHud(i);
+    layer.classList.remove('away');
+    chapterCard.classList.remove('away');
+    if (typeof s.at === 'number') {
+      var c = chapters[s.at];
+      if (moved) {
+        $('ch-part').textContent = c.part ? PART_WORDS[c.part] : '';
+        $('ch-title').textContent = c.title ? c.title.text : '';
+        chapterCard.hidden = !c.part && !c.title;
+        chapterCard.classList.toggle('long', !!c.title && c.title.text.length > 48);
+        restart(chapterCard, 'in');
+        var before = from == null ? '' : partAt(steps[from].at);
+        if (c.part && c.part !== before) { $('banner-text').textContent = PART_WORDS[c.part]; restart(banner, 'show'); }
+      }
+    } else chapterCard.hidden = true;
+    fitLayer();
+    document.body.setAttribute('data-mood', moodKey(s.at));
+    if (gl && s.kind === 'req') summonFx();
+    updateControls();
+    if (document.activeElement === btnNext && btnNext.disabled) {
+      var b = layer.querySelector('button');
+      if (b) b.focus();
+    }
+  }
+  function go(target) {
+    if (flight) { land(); return; }
+    if (target < 0 || target >= steps.length || target === cur || steps[0].kind === 'none') return;
+    var from = cur;
+    if (gl && steps[from].at !== steps[target].at) { cur = target; beginFlight(from, target); return; }
+    show(target, from);
+  }
+  // The text never slides under the chapter title: it starts below it, and scrolls if it must.
+  function fitLayer() {
+    layer.style.paddingTop = chapterCard.hidden ? '' : Math.round(chapterCard.getBoundingClientRect().bottom + 12) + 'px';
+  }
+  function next() { go(cur + 1); }
+  function back() { go(cur - 1); }
+
+  // ---------- the full CV, one page ----------
+  var full = $('full'), btnFull = $('btn-full'), btnClose = $('btn-close'), lastFocus = null;
+  function openFull() {
+    lastFocus = document.activeElement;
+    full.hidden = false;
+    btnClose.focus();
+  }
+  function closeFull() {
+    full.hidden = true;
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  btnFull.addEventListener('click', openFull);
+  btnClose.addEventListener('click', closeFull);
+  full.addEventListener('click', function (e) { if (e.target === full) closeFull(); });
+  btnNext.addEventListener('click', next);
+  btnBack.addEventListener('click', back);
+  $('app').addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('button, .top, .controls')) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    next();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!full.hidden) { if (e.key === 'Escape') { e.preventDefault(); closeFull(); } return; }
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    var onButton = e.target && e.target.tagName === 'BUTTON';
+    if (e.key === 'ArrowRight' || ((e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter') && !onButton)) { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+  });
+
+  // ---------- start ----------
+  buildFull();
+  if (startGL()) {
+    try {
+      buildWorld();
+      guide = makeGuide(); player = makePlayer();
+      var L0 = LOC[steps[0].at];
+      guide.pos = L0.g.slice(); player.pos = L0.p.slice(); guide.yaw = L0.gy; player.yaw = L0.py;
+      cam.e = shotFor(0)[0].slice(); cam.a = shotFor(0)[1].slice();
+      moodNow = targetMood(L0);
+      canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); toPlain(); });
+      window.addEventListener('resize', function () { resize(); fitLayer(); });
+      document.addEventListener('visibilitychange', function () { last = 0; loop(); });
+      resize();
+      show(0, null);
+      loop();
+    } catch (err) {
+      toPlain();
+    }
+  } else toPlain();
+  if (!gl) window.addEventListener('resize', fitLayer);
+})();
+</script>
+</body>
+</html>
