@@ -3,8 +3,8 @@
 Turns one life document and one job post into two files: `game.html`, a short CV game an employer can play, and `check-sheet.html`, which traces every word in the game to a numbered line of either input. The AI picks line numbers. Scripts copy the words.
 
 ## Who runs it
-- **The author**, for their own job applications: one run per job.
-- **Competition judges** ("The Translator") and **anyone who drops this folder into a claude.ai Project or uploads it as a Skill**, with their own life document and any job post. So nothing here may assume a particular person or job. In a Project the folders are flattened: every file name is unique, and files refer to each other by name only.
+- **The author**, for their own job applications: one run per job. Personal for now (decided 2026-09-26); whether it works for other people is unproven.
+- **Competition judges** ("The Translator") may still run it, so runs must not break for another life document, but nothing needs designing for other users yet. In a Project the folders are flattened: every file name is unique, and files refer to each other by name only.
 
 One exception, decided by the author on 2026-09-25 and not to be reopened: the guide in the game is always the author's avatar (Nika), whoever's life document is run. Every word it says is still a line of that life document.
 
