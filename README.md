@@ -6,6 +6,8 @@ Nothing in the game was written by the AI. Claude only picks line numbers; a scr
 
 An entry for "The Translator" competition. Built to run as a claude.ai Skill or Project, in Claude Code, or anywhere Node.js runs.
 
+A deliberate decision was made to not add information to the examples, because that would ruin the translator purpose. However, for every new case, the AI will ask me to fill in what it was not able to answer using the information in my-story. For the purpose of the current assignment, I chose not to add information that is not sitting in my-story. 
+
 ## What to feed it
 - **A life document:** plain text or Markdown. Your life, skills, experience and personality in your own words. Sentences or bullets both work. Everything the game can say about you must be in here, spelled the way you want it shown.
 - **A job post:** the text of one job ad, as is.
@@ -60,7 +62,7 @@ cv-game-translator/
 ├── SKILL.md           ← where Claude starts when this folder is a claude.ai Skill
 ├── identity.md        ← what it converts, from what, to what; what it never does
 ├── rules.md           ← the four steps, and how a job post is mapped to a life document
-├── examples.md        ← three real runs (placeholder until they exist)
+├── examples/          ← real runs: each one's game and check sheet, contact lines removed
 ├── README.md          ← this file
 ├── .claude/commands/cv-game.md  ← the /cv-game command in Claude Code
 ├── reference/         ← the contract
