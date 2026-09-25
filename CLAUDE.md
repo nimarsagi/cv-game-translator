@@ -21,7 +21,7 @@ Someone hands you a life document and a job post, says "run it", or types `/cv-g
 | `output-contract.md` (in `reference/`) | the fixed fields, their order, the data format, the check | when a field or the check is in question |
 | `game-template.html`, `check-sheet-template.html` (in `reference/`) | the fixed templates Fill completes; the game's 3D world, guide and scenes are built in. Never edit them during a run | never during a run |
 | `cv-number.js`, `cv-fill.js`, `cv-check.js` (in `scripts/`) | steps 1, 3 and 4 | run them, don't read them |
-| `examples.md` | real runs, once they exist | when you want to see the contract hold |
+| `examples/` | real runs: each one's game and check sheet, made from the life document with its contact lines removed | when you want to see the contract hold |
 | `cv-game.md` (in `.claude/commands/`) | the `/cv-game` command: picks one job post from `my-story/job-posts/`, asking when there are several | when someone types `/cv-game` |
 | `SKILL.md` | the entry point when this folder is uploaded as a claude.ai Skill | not needed in Claude Code |
 | `README.md` | for people: how to use it, what comes back | not needed for a run |
