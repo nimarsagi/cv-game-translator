@@ -18,9 +18,9 @@ A deliberate decision was made to not add information to the examples, because t
 **Out:** `game.html` is for the employer. One key or tap per step, nothing to solve, no way to lose, under 5 minutes; "Show the full CV" opens everything on one page. It is one file with nothing loaded from outside, so it plays in any browser (as plain pages where 3D can't be drawn) and as a claude.ai artifact. The guide is my avatar. `check-sheet.html` is for me and the judges: the seven fields with the line each piece came from, what was left out, and a paste-in check. `check-result.txt` is the script check, PASS or FAIL per piece.
 
 ## See the examples
-`examples/` holds three finished runs, one for each job post in `my-story/job-posts/`: a game and its check sheet.
+`examples/` holds three finished runs, one for each job post in `my-story/job-posts/`: a game and its check sheet. Both folders stay on my computer and git ignores them, since they hold my life story.
 
-**To look at one:** open the file on GitHub, click "Download raw file", and open it in a browser. Or attach it in a claude.ai chat and say "show this file as an artifact".
+**To look at one:** open it in a browser. Or attach it in a claude.ai chat and say "show this file as an artifact".
 
 **To make one again:** in claude.ai with the Skill installed (see below), attach `my-story/life-document.md` and one file from `my-story/job-posts/`, and say "run the CV game translator". In Claude Code, type `/cv-game sentinelone` (or `overcome`, or `transform-labs`). Claude first asks about requirements it found no evidence for; skip them, as I did for the examples.
 
@@ -69,6 +69,6 @@ cv-game-translator/
 │  ├─ cv-fill.js              step 3: copy each piece from its line into the two templates, then run step 4
 │  └─ cv-check.js             step 4: every piece in its line, character for character
 ├─ my-story/                  my life document, master profile and three job posts (not on GitHub; git ignores it)
-├─ examples/                  my three real runs: each one's game and check sheet, contact lines removed
+├─ examples/                  my three real runs: each one's game and check sheet, contact lines removed (not on GitHub; git ignores it)
 └─ runs/                      where each run's working files land (not in git)
 ```

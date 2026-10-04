@@ -3,3 +3,4 @@ runs/
 .claude/*
 !.claude/commands/
 my-story/
+examples/
