@@ -34,7 +34,7 @@ Both claude.ai ways need code execution, which is on by default; check Settings 
 
 **claude.ai Project** (every file stays loaded in every chat, about 100 KB): add every file in this folder to the Project's files (the folders get flattened; every file name is unique), then attach both documents in a chat and say "run it".
 
-**Claude Code:** my life document is at `my-story/life-document.md` and each job post goes in `my-story/job-posts/`; then type `/cv-game`. With several job posts, Claude asks which one; `/cv-game <part of a file name>` picks one straight away, and `/cv-game` followed by a pasted job post saves it there first. Each run lands in `runs/<company>-<job-title>/`, which git ignores.
+**Claude Code:** my life document is at `my-story/life-document.md` and each job post goes in `my-story/job-posts/` (both stay on my computer; git ignores them); then type `/cv-game`. With several job posts, Claude asks which one; `/cv-game <part of a file name>` picks one straight away, and `/cv-game` followed by a pasted job post saves it there first. Each run lands in `runs/<company>-<job-title>/`, which git ignores.
 
 **By hand, with Node.js:**
 ```
@@ -68,7 +68,7 @@ cv-game-translator/
 │  ├─ cv-number.js            step 1: split both inputs into numbered lines, no character changed
 │  ├─ cv-fill.js              step 3: copy each piece from its line into the two templates, then run step 4
 │  └─ cv-check.js             step 4: every piece in its line, character for character
-├─ my-story/                  my life document, master profile and three job posts
+├─ my-story/                  my life document, master profile and three job posts (not on GitHub; git ignores it)
 ├─ examples/                  my three real runs: each one's game and check sheet, contact lines removed
 └─ runs/                      where each run's working files land (not in git)
 ```
